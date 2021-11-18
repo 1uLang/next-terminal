@@ -48,12 +48,8 @@ func (r AccessGatewayRepository) Find(pageIndex, pageSize int, ip, name, order, 
 	} else {
 		field = "created"
 	}
-	if pageIndex == 0 || pageSize == 0 {
-		err = db.Order(field + " " + order).Find(&o).Error
-	} else {
-		err = db.Order(field + " " + order).Find(&o).Offset((pageIndex - 1) * pageSize).Limit(pageSize).Error
-	}
 
+	err = db.Order(field + " " + order).Find(&o).Offset((pageIndex - 1) * pageSize).Limit(pageSize).Error
 	if o == nil {
 		o = make([]model.AccessGatewayForPage, 0)
 	}
@@ -79,11 +75,6 @@ func (r AccessGatewayRepository) FindById(id string) (o model.AccessGateway, err
 }
 
 func (r AccessGatewayRepository) FindAll() (o []model.AccessGateway, err error) {
-	t := model.AccessGateway{}
-	db := r.DB.Table(t.TableName())
-	err = db.Find(&o).Error
-	if o == nil {
-		o = make([]model.AccessGateway, 0)
-	}
+	err = r.DB.Find(&o).Error
 	return
 }

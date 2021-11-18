@@ -114,6 +114,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 		users.POST("", UserCreateEndpoint)
 		users.GET("/paging", UserPagingEndpoint)
 		users.PUT("/:id", UserUpdateEndpoint)
+		users.PATCH("/:id/status", UserUpdateStatusEndpoint)
 		users.DELETE("/:id", UserDeleteEndpoint)
 		users.GET("/:id", UserGetEndpoint)
 		users.POST("/:id/change-password", UserChangePasswordEndpoint)
@@ -173,6 +174,10 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 		sessions.DELETE("/:id", Admin(SessionDeleteEndpoint))
 		sessions.GET("/:id/recording", Admin(SessionRecordingEndpoint))
 		sessions.GET("/:id", Admin(SessionGetEndpoint))
+		sessions.POST("/:id/reviewed", Admin(SessionReviewedEndpoint))
+		sessions.POST("/:id/unreviewed", Admin(SessionUnViewedEndpoint))
+		sessions.POST("/clear", Admin(SessionClearEndpoint))
+		sessions.POST("/reviewed", Admin(SessionReviewedAllEndpoint))
 
 		sessions.POST("", SessionCreateEndpoint)
 		sessions.POST("/:id/connect", SessionConnectEndpoint)
@@ -199,7 +204,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 	{
 		loginLogs.GET("/paging", LoginLogPagingEndpoint)
 		loginLogs.DELETE("/:id", LoginLogDeleteEndpoint)
-		//loginLogs.DELETE("/clear", LoginLogClearEndpoint)
+		loginLogs.POST("/clear", LoginLogClearEndpoint)
 	}
 
 	e.GET("/properties", Admin(PropertyGetEndpoint))
@@ -272,6 +277,12 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 		accessGateways.POST("/:id/reconnect", AccessGatewayReconnectEndpoint)
 	}
 
+	backup := e.Group("/backup", Admin)
+	{
+		backup.GET("/export", BackupExportEndpoint)
+		backup.POST("/import", BackupImportEndpoint)
+	}
+
 	return e
 }
 
@@ -320,6 +331,9 @@ func InitDBData() (err error) {
 	if err := propertyService.DeleteDeprecatedProperty(); err != nil {
 		return err
 	}
+	if err := accessGatewayService.ReConnectAll(); err != nil {
+		return err
+	}
 	if err := propertyService.InitProperties(); err != nil {
 		return err
 	}
@@ -347,9 +361,7 @@ func InitDBData() (err error) {
 	if err := storageService.InitStorages(); err != nil {
 		return err
 	}
-	if err := accessGatewayService.ReConnectAll(); err != nil {
-		return err
-	}
+
 	return nil
 }
 

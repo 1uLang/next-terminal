@@ -3,6 +3,7 @@ package api
 import (
 	"errors"
 	go_cache "github.com/patrickmn/go-cache"
+	"next-terminal/server/constant"
 	"strconv"
 	"strings"
 
@@ -20,6 +21,10 @@ func UserCreateEndpoint(c echo.Context) (err error) {
 	if err := c.Bind(&item); err != nil {
 		return err
 	}
+	if userRepository.ExistByUsername(item.Username) {
+		return Fail(c, -1, "username is already in use")
+	}
+
 	password := item.Password
 
 	var pass []byte
@@ -30,6 +35,7 @@ func UserCreateEndpoint(c echo.Context) (err error) {
 
 	item.ID = utils.UUID()
 	item.Created = utils.NowJsonTime()
+	item.Status = constant.StatusEnabled
 
 	if err := userRepository.Create(&item); err != nil {
 		return err
@@ -70,6 +76,11 @@ func UserPagingEndpoint(c echo.Context) error {
 func UserUpdateEndpoint(c echo.Context) error {
 	id := c.Param("id")
 
+	account, _ := GetCurrentAccount(c)
+	if account.ID == id {
+		return Fail(c, -1, "cannot modify itself")
+	}
+
 	var item model.User
 	if err := c.Bind(&item); err != nil {
 		return err
@@ -77,6 +88,21 @@ func UserUpdateEndpoint(c echo.Context) error {
 	item.ID = id
 
 	if err := userRepository.Update(&item); err != nil {
+		return err
+	}
+
+	return Success(c, nil)
+}
+
+func UserUpdateStatusEndpoint(c echo.Context) error {
+	id := c.Param("id")
+	status := c.QueryParam("status")
+	account, _ := GetCurrentAccount(c)
+	if account.ID == id {
+		return Fail(c, -1, "不能操作自身账户")
+	}
+
+	if err := userService.UpdateStatusById(id, status); err != nil {
 		return err
 	}
 
@@ -95,26 +121,10 @@ func UserDeleteEndpoint(c echo.Context) error {
 		if account.ID == userId {
 			return Fail(c, -1, "不允许删除自身账户")
 		}
-		user, err := userRepository.FindById(userId)
-		if err != nil {
+		// 下线该用户
+		if err := userService.LogoutById(userId); err != nil {
 			return err
 		}
-		// 将用户强制下线
-		loginLogs, err := loginLogRepository.FindAliveLoginLogsByUsername(user.Username)
-		if err != nil {
-			return err
-		}
-
-		for j := range loginLogs {
-			token := loginLogs[j].ID
-			cacheKey := userService.BuildCacheKeyByToken(token)
-			cache.GlobalCache.Delete(cacheKey)
-			if err := userService.Logout(token); err != nil {
-				log.WithError(err).WithField("id:", token).Error("Cache Deleted Error")
-				return Fail(c, 500, "强制下线错误")
-			}
-		}
-
 		// 删除用户
 		if err := userRepository.DeleteById(userId); err != nil {
 			return err

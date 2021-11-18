@@ -31,6 +31,13 @@ func (r AccessGatewayService) GetGatewayAndReconnectById(accessGatewayId string)
 
 func (r AccessGatewayService) GetGatewayById(accessGatewayId string) (g *gateway.Gateway, err error) {
 	g = gateway.GlobalGatewayManager.GetById(accessGatewayId)
+	if g == nil {
+		accessGateway, err := r.accessGatewayRepository.FindById(accessGatewayId)
+		if err != nil {
+			return nil, err
+		}
+		g = r.ReConnect(&accessGateway)
+	}
 	return g, nil
 }
 
@@ -39,8 +46,10 @@ func (r AccessGatewayService) ReConnectAll() error {
 	if err != nil {
 		return err
 	}
-	for i := range gateways {
-		r.ReConnect(&gateways[i])
+	if len(gateways) > 0 {
+		for i := range gateways {
+			r.ReConnect(&gateways[i])
+		}
 	}
 	return nil
 }

@@ -16,15 +16,13 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	return userRepository
 }
 
-func (r UserRepository) FindAll() (o []model.User) {
-	if r.DB.Find(&o).Error != nil {
-		return nil
-	}
+func (r UserRepository) FindAll() (o []model.User, err error) {
+	err = r.DB.Find(&o).Error
 	return
 }
 
 func (r UserRepository) Find(pageIndex, pageSize int, username, nickname, mail, order, field string, account model.User) (o []model.UserForPage, total int64, err error) {
-	db := r.DB.Table("users").Select("users.id,users.username,users.nickname,users.mail,users.online,users.enabled,users.created,users.type, count(resource_sharers.user_id) as sharer_asset_count, users.totp_secret").Joins("left join resource_sharers on users.id = resource_sharers.user_id and resource_sharers.resource_type = 'asset'").Group("users.id")
+	db := r.DB.Table("users").Select("users.id,users.username,users.nickname,users.mail,users.online,users.created,users.type,users.status, count(resource_sharers.user_id) as sharer_asset_count, users.totp_secret").Joins("left join resource_sharers on users.id = resource_sharers.user_id and resource_sharers.resource_type = 'asset'").Group("users.id")
 	dbCounter := r.DB.Table("users")
 
 	if constant.TypeUser == account.Type {
@@ -90,6 +88,16 @@ func (r UserRepository) FindById(id string) (o model.User, err error) {
 func (r UserRepository) FindByUsername(username string) (o model.User, err error) {
 	err = r.DB.Where("username = ?", username).First(&o).Error
 	return
+}
+
+func (r UserRepository) ExistByUsername(username string) (exist bool) {
+	count := int64(0)
+	err := r.DB.Table("users").Where("username = ?", username).Count(&count).Error
+	if err != nil {
+		return false
+	}
+
+	return count > 0
 }
 
 func (r UserRepository) FindOnlineUsers() (o []model.User, err error) {

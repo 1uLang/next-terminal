@@ -1,6 +1,7 @@
 package api
 
 import (
+	"next-terminal/server/constant"
 	"path"
 	"strconv"
 	"strings"
@@ -95,7 +96,7 @@ func AuthorizeToken(c echo.Context) error {
 	}
 	// 保存登录日志
 	if err := SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username,
-		true, loginAccount.Remember, token, "",true); err != nil {
+		true, loginAccount.Remember, token, "", true); err != nil {
 		return err
 	}
 
@@ -235,6 +236,10 @@ func loginWithTotpEndpoint(c echo.Context) error {
 		return FailWithData(c, -1, "您输入的账号或密码不正确", count)
 	}
 
+	if user.Status == constant.StatusDisabled {
+		return Fail(c, -1, "该账户已停用")
+	}
+
 	if err := utils.Encoder.Match([]byte(user.Password), []byte(loginAccount.Password)); err != nil {
 		count++
 		cache.GlobalCache.Set(loginFailCountKey, count, time.Minute*time.Duration(5))
@@ -269,9 +274,7 @@ func loginWithTotpEndpoint(c echo.Context) error {
 
 func LogoutEndpoint(c echo.Context) error {
 	token := GetToken(c)
-	cacheKey := userService.BuildCacheKeyByToken(token)
-	cache.GlobalCache.Delete(cacheKey)
-	err := userService.Logout(token)
+	err := userService.LogoutByToken(token)
 	if err != nil {
 		return err
 	}

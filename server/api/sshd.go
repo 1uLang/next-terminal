@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net"
+	"next-terminal/server/global/security"
 	"path"
 	"strings"
 	"time"
@@ -331,6 +333,11 @@ func handleAccessAsset(sess *ssh.Session, sessionId string) (err error) {
 	sessionForUpdate.Recording = recording
 	sessionForUpdate.ConnectedTime = utils.NowJsonTime()
 
+	if sessionForUpdate.Recording == "" {
+		// 未录屏时无需审计
+		sessionForUpdate.Reviewed = true
+	}
+
 	if err := sessionRepository.UpdateById(&sessionForUpdate, sessionId); err != nil {
 		return err
 	}
@@ -376,6 +383,55 @@ func passwordAuth(ctx ssh.Context, pass string) bool {
 	return true
 }
 
+func connCallback(ctx ssh.Context, conn net.Conn) net.Conn {
+	securities := security.GlobalSecurityManager.Values()
+	if len(securities) == 0 {
+		return conn
+	}
+
+	ip := strings.Split(conn.RemoteAddr().String(), ":")[0]
+
+	for _, s := range securities {
+		if strings.Contains(s.IP, "/") {
+			// CIDR
+			_, ipNet, err := net.ParseCIDR(s.IP)
+			if err != nil {
+				continue
+			}
+			if !ipNet.Contains(net.ParseIP(ip)) {
+				continue
+			}
+		} else if strings.Contains(s.IP, "-") {
+			// 范围段
+			split := strings.Split(s.IP, "-")
+			if len(split) < 2 {
+				continue
+			}
+			start := split[0]
+			end := split[1]
+			intReqIP := utils.IpToInt(ip)
+			if intReqIP < utils.IpToInt(start) || intReqIP > utils.IpToInt(end) {
+				continue
+			}
+		} else {
+			// IP
+			if s.IP != ip {
+				continue
+			}
+		}
+
+		if s.Rule == constant.AccessRuleAllow {
+			return conn
+		}
+		if s.Rule == constant.AccessRuleReject {
+			_, _ = conn.Write([]byte("your access request was denied :(\n"))
+			return nil
+		}
+	}
+
+	return conn
+}
+
 func Setup() {
 	ssh.Handle(func(s ssh.Session) {
 		_, _ = io.WriteString(s, fmt.Sprintf(constant.Banner, constant.Version))
@@ -393,6 +449,7 @@ func Setup() {
 		nil,
 		ssh.PasswordAuth(passwordAuth),
 		ssh.HostKeyFile(config.GlobalCfg.Sshd.Key),
+		ssh.WrapConn(connCallback),
 	)
 	log.Fatal(fmt.Sprintf("启动sshd服务失败: %v", err.Error()))
 }
