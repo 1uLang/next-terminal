@@ -88,6 +88,7 @@ func urlCheckAuth(uri string) bool {
 	auths := map[string]bool{
 		"/assets/paging":      true,
 		"/assets/":            true,
+		"/access-gateways":    true,
 		"/credentials/paging": true,
 		"/credentials/":       true,
 		"/sessions/paging":    true,
