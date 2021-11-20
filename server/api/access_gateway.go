@@ -24,7 +24,7 @@ func AccessGatewayCreateEndpoint(c echo.Context) error {
 	}
 	// 连接网关
 	accessGatewayService.ReConnect(&item)
-	return Success(c, "")
+	return Success(c, item.ID)
 }
 
 func AccessGatewayAllEndpoint(c echo.Context) error {

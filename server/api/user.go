@@ -211,12 +211,15 @@ func ReloadToken() error {
 		authorization := Authorization{
 			Token:    token,
 			Remember: loginLog.Remember,
+			Forever:  loginLog.Forever,
 			User:     user,
 		}
 
 		cacheKey := userService.BuildCacheKeyByToken(token)
 
-		if authorization.Remember {
+		if authorization.Forever {
+			cache.GlobalCache.Set(cacheKey, authorization, -1)
+		} else if authorization.Remember {
 			// 记住登录有效期两周
 			cache.GlobalCache.Set(cacheKey, authorization, RememberEffectiveTime)
 		} else {

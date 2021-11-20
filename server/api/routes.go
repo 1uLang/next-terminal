@@ -86,6 +86,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 	e.Use(TcpWall)
 	e.Use(Auth)
 
+	e.POST("/authorize-token", AuthorizeToken)
 	e.POST("/login", LoginEndpoint)
 	e.POST("/loginWithTotp", loginWithTotpEndpoint)
 

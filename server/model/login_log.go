@@ -14,6 +14,7 @@ type LoginLog struct {
 	Remember        bool           `json:"remember"`
 	State           string         `gorm:"type:varchar(1)" json:"state"` // 成功 1 失败 0
 	Reason          string         `gorm:"type:varchar(500)" json:"reason"`
+	Forever         bool           `json:"forever"`
 }
 
 func (r *LoginLog) TableName() string {

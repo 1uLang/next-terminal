@@ -11,13 +11,10 @@ COPY . .
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
 RUN apk add gcc g++
 RUN go mod tidy
-RUN sh get_arch.sh
 RUN echo "Hello, my CPU architecture is $(uname -m)"
 RUN go env;CGO_ENABLED=1 GOOS=linux GOARCH=$ARCH go build -a -ldflags '-linkmode external -extldflags "-static"' -o next-terminal main.go
 
 FROM alpine:latest
-
-LABEL MAINTAINER="helloworld1024@foxmail.com"
 
 ENV TZ Asia/Shanghai
 ENV DB sqlite

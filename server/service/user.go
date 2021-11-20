@@ -94,6 +94,9 @@ func (r UserService) LogoutByToken(token string) (err error) {
 		log.Warnf("登录日志「%v」获取失败", token)
 		return
 	}
+	if loginLog.Forever {
+		return nil
+	}
 	cacheKey := r.BuildCacheKeyByToken(token)
 	cache.GlobalCache.Delete(cacheKey)
 

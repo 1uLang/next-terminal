@@ -42,8 +42,66 @@ type Authorization struct {
 	Token    string
 	Remember bool
 	User     model.User
+	Forever  bool
 }
 
+//设置永久token
+func AuthorizeToken(c echo.Context) error {
+	var loginAccount LoginAccount
+	if err := c.Bind(&loginAccount); err != nil {
+		return err
+	}
+
+	user, err := userRepository.FindByUsername(loginAccount.Username)
+
+	// 存储登录失败次数信息
+	loginFailCountKey := c.RealIP() + loginAccount.Username
+	v, ok := cache.GlobalCache.Get(loginFailCountKey)
+	if !ok {
+		v = 1
+	}
+	count := v.(int)
+	if count >= 5 {
+		return Fail(c, -1, "登录失败次数过多，请等待5分钟后再试")
+	}
+
+	if err != nil {
+		count++
+		cache.GlobalCache.Set(loginFailCountKey, count, time.Minute*time.Duration(5))
+		// 保存登录日志
+		if err := SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "账号或密码不正确"); err != nil {
+			return err
+		}
+		return FailWithData(c, -1, "您输入的账号或密码不正确", count)
+	}
+
+	if err := utils.Encoder.Match([]byte(user.Password), []byte(loginAccount.Password)); err != nil {
+		count++
+		cache.GlobalCache.Set(loginFailCountKey, count, time.Minute*time.Duration(5))
+		// 保存登录日志
+		if err := SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "账号或密码不正确"); err != nil {
+			return err
+		}
+		return FailWithData(c, -1, "您输入的账号或密码不正确", count)
+	}
+
+	if user.TOTPSecret != "" && user.TOTPSecret != "-" {
+		return Fail(c, 0, "")
+	}
+
+	token, err := LoginSuccess(loginAccount, user, true)
+	if err != nil {
+		return err
+	}
+	// 保存登录日志
+	if err := SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username,
+		true, loginAccount.Remember, token, "", true); err != nil {
+		return err
+	}
+
+	return Success(c, token)
+
+}
 func LoginEndpoint(c echo.Context) error {
 	var loginAccount LoginAccount
 	if err := c.Bind(&loginAccount); err != nil {
@@ -102,7 +160,7 @@ func LoginEndpoint(c echo.Context) error {
 	return Success(c, token)
 }
 
-func SaveLoginLog(clientIP, clientUserAgent string, username string, success, remember bool, id, reason string) error {
+func SaveLoginLog(clientIP, clientUserAgent string, username string, success, remember bool, id, reason string, forever ...bool) error {
 	loginLog := model.LoginLog{
 		Username:        username,
 		ClientIP:        clientIP,
@@ -110,6 +168,7 @@ func SaveLoginLog(clientIP, clientUserAgent string, username string, success, re
 		LoginTime:       utils.NowJsonTime(),
 		Reason:          reason,
 		Remember:        remember,
+		Forever:         len(forever) > 0,
 	}
 	if success {
 		loginLog.State = "1"
@@ -125,18 +184,21 @@ func SaveLoginLog(clientIP, clientUserAgent string, username string, success, re
 	return nil
 }
 
-func LoginSuccess(loginAccount LoginAccount, user model.User) (token string, err error) {
+func LoginSuccess(loginAccount LoginAccount, user model.User, forever ...bool) (token string, err error) {
 	token = strings.Join([]string{utils.UUID(), utils.UUID(), utils.UUID(), utils.UUID()}, "")
 
 	authorization := Authorization{
 		Token:    token,
 		Remember: loginAccount.Remember,
 		User:     user,
+		Forever:  len(forever) > 0 && forever[0],
 	}
 
 	cacheKey := userService.BuildCacheKeyByToken(token)
-
-	if authorization.Remember {
+	if len(forever) > 0 && forever[0] {
+		// 永久
+		cache.GlobalCache.Set(cacheKey, authorization, -1)
+	} else if authorization.Remember {
 		// 记住登录有效期两周
 		cache.GlobalCache.Set(cacheKey, authorization, RememberEffectiveTime)
 	} else {

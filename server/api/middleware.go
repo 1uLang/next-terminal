@@ -85,9 +85,28 @@ func TcpWall(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+func urlCheckAuth(uri string) bool {
+	auths := map[string]bool{
+		"/assets/paging":      true,
+		"/assets/":            true,
+		"/access-gateways":    true,
+		"/credentials/paging": true,
+		"/credentials/":       true,
+		"/sessions/paging":    true,
+		"/sessions/":          true,
+		"/tunnel":             true,
+		"/info":               true,
+	}
+	for url := range auths {
+		if strings.HasPrefix(uri, url) {
+			return true
+		}
+	}
+	return false
+}
 func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 
-	anonymousUrls := []string{"/login", "/static", "/favicon.ico", "/logo.svg", "/asciinema"}
+	anonymousUrls := []string{"/login", "/static", "/favicon.ico", "/logo.svg", "/asciinema", "/authorize-token"}
 
 	return func(c echo.Context) error {
 
@@ -111,14 +130,23 @@ func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 		if !found {
 			return Fail(c, 401, "您的登录信息已失效，请重新登录后再试。")
 		}
+		//只支持部分get接口
+		if authorization.(Authorization).Forever { //永久token
+			if c.Request().Method != "GET" || urlCheckAuth(uri) {
+				return next(c)
+			} else {
 
-		if authorization.(Authorization).Remember {
-			// 记住登录有效期两周
-			cache.GlobalCache.Set(cacheKey, authorization, time.Hour*time.Duration(24*14))
+				return Fail(c, 401, "您的登录信息已失效，请重新登录后再试。")
+			}
 		} else {
-			cache.GlobalCache.Set(cacheKey, authorization, time.Hour*time.Duration(2))
-		}
 
+			if authorization.(Authorization).Remember {
+				// 记住登录有效期两周
+				cache.GlobalCache.Set(cacheKey, authorization, time.Hour*time.Duration(24*14))
+			} else {
+				cache.GlobalCache.Set(cacheKey, authorization, time.Hour*time.Duration(2))
+			}
+		}
 		return next(c)
 	}
 }
