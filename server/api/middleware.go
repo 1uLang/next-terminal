@@ -95,6 +95,7 @@ func urlCheckAuth(uri string) bool {
 		"/sessions/":          true,
 		"/tunnel":             true,
 		"/info":               true,
+		"/commands":           true,
 	}
 	for url := range auths {
 		if strings.HasPrefix(uri, url) {
