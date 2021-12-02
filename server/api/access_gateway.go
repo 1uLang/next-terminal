@@ -66,6 +66,33 @@ func AccessGatewayPagingEndpoint(c echo.Context) error {
 		"items": items,
 	})
 }
+func AccessGatewayListEndpoint(c echo.Context) error {
+	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
+	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
+	ip := c.QueryParam("ip")
+	name := c.QueryParam("name")
+	ids := strings.Split(c.QueryParam("ids"), ",")
+	order := c.QueryParam("order")
+	field := c.QueryParam("field")
+
+	items, total, err := accessGatewayRepository.List(pageIndex, pageSize, ip, name, ids, order, field)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(items); i++ {
+		g, err := accessGatewayService.GetGatewayById(items[i].ID)
+		if err != nil {
+			return err
+		}
+		items[i].Connected = g.Connected
+		items[i].Message = g.Message
+	}
+
+	return Success(c, H{
+		"total": total,
+		"items": items,
+	})
+}
 
 func AccessGatewayUpdateEndpoint(c echo.Context) error {
 	id := c.Param("id")

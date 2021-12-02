@@ -68,7 +68,7 @@ func (r AssetRepository) FindByProtocolAndUser(protocol string, account model.Us
 	return
 }
 
-func (r AssetRepository) Find(pageIndex, pageSize int, name, protocol, tags string, account model.User, owner, sharer, userGroupId, ip, order, field string) (o []model.AssetForPage, total int64, err error) {
+func (r AssetRepository) Find(pageIndex, pageSize int, name, protocol, tags string, account model.User, owner, sharer, userGroupId, ip, order, field string, count ...bool) (o []model.AssetForPage, total int64, err error) {
 	db := r.DB.Table("assets").Select("assets.id,assets.name,assets.ip,assets.port,assets.protocol,assets.active,assets.owner,assets.created,assets.tags,assets.description, users.nickname as owner_name").Joins("left join users on assets.owner = users.id").Joins("left join resource_sharers on assets.id = resource_sharers.resource_id").Group("assets.id")
 	dbCounter := r.DB.Table("assets").Select("DISTINCT assets.id").Joins("left join resource_sharers on assets.id = resource_sharers.resource_id").Group("assets.id")
 
@@ -167,11 +167,39 @@ func (r AssetRepository) Find(pageIndex, pageSize int, name, protocol, tags stri
 					}
 				}
 			}
+			//计算资产连接次数
+			if len(count) > 0 && count[0] {
+				o[i].Count, _ = NewSessionRepository(r.DB).AssetConnectNum(o[i].ID)
+			}
 		}
 	}
 	return
 }
 
+func (r AssetRepository) FindIdsByTags(tags string) (ids []string, err error) {
+	var o []struct {
+		Id string `json:"id"`
+	}
+	db := r.DB.Table("assets").Select("assets.id,assets.tags")
+
+	if len(tags) > 0 {
+		tagArr := strings.Split(tags, ",")
+		for i := range tagArr {
+			if config.GlobalCfg.DB == "sqlite" {
+				db = db.Where("(',' || assets.tags || ',') LIKE ?", "%,"+tagArr[i]+",%")
+			} else {
+				db = db.Where("find_in_set(?, assets.tags)", tagArr[i])
+			}
+		}
+	}
+
+	err = db.Find(&o).Error
+
+	for _, v := range o {
+		ids = append(ids, v.Id)
+	}
+	return
+}
 func (r AssetRepository) Encrypt(item *model.Asset, password []byte) error {
 	if item.Password != "" && item.Password != "-" {
 		encryptedCBC, err := utils.AesEncryptCBC([]byte(item.Password), password)

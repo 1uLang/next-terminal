@@ -69,6 +69,45 @@ func SessionPagingEndpoint(c echo.Context) error {
 	})
 }
 
+func SessionListEndpoint(c echo.Context) error {
+	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
+	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
+	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
+	assetId := c.QueryParam("assetId")
+	status := c.QueryParam("status")
+	clientIp := c.QueryParam("clientIp")
+	items, total, err := sessionRepository.ListAssetIds(pageIndex, pageSize, clientIp, assetId, status, assetIds)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(items); i++ {
+		if status == constant.Disconnected && len(items[i].Recording) > 0 {
+
+			var recording string
+			if items[i].Mode == constant.Naive || items[i].Mode == constant.Terminal {
+				recording = items[i].Recording
+			} else {
+				recording = items[i].Recording + "/recording"
+			}
+
+			if utils.FileExists(recording) {
+				items[i].Recording = "1"
+			} else {
+				items[i].Recording = "0"
+			}
+		} else {
+			items[i].Recording = "0"
+		}
+	}
+
+	return Success(c, H{
+		"total": total,
+		"items": items,
+	})
+}
+
 func SessionDeleteEndpoint(c echo.Context) error {
 	sessionIds := strings.Split(c.Param("id"), ",")
 	err := sessionRepository.DeleteByIds(sessionIds)

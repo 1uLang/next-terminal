@@ -76,6 +76,46 @@ func (r SessionRepository) Find(pageIndex, pageSize int, status, userId, clientI
 	}
 	return
 }
+func (r SessionRepository) ListAssetIds(pageIndex, pageSize int, clientIp, assetId, status string, assetIds []string) (results []model.SessionForPage, total int64, err error) {
+
+	db := r.DB
+	var params []interface{}
+
+	params = append(params, status)
+
+	itemSql := "SELECT s.id,s.mode, s.protocol,s.recording, s.connection_id, s.asset_id, s.creator, s.client_ip, s.width, s.height, s.ip, s.port, s.username, s.status, s.connected_time, s.disconnected_time,s.code,s.reviewed, s.message, a.name AS asset_name, u.nickname AS creator_name FROM sessions s LEFT JOIN assets a ON s.asset_id = a.id LEFT JOIN users u ON s.creator = u.id WHERE s.STATUS = ? "
+	countSql := "select count(*) from sessions as s where s.status = ? "
+
+	if len(assetIds) > 0 {
+		itemSql += " and s.asset_id in ?"
+		countSql += " and s.asset_id in ?"
+		params = append(params, assetIds)
+	}
+
+	if len(clientIp) > 0 {
+		itemSql += " and s.client_ip like ?"
+		countSql += " and s.client_ip like ?"
+		params = append(params, "%"+clientIp+"%")
+	}
+
+	if len(assetId) > 0 {
+		itemSql += " and s.asset_id = ?"
+		countSql += " and s.asset_id = ?"
+		params = append(params, assetId)
+	}
+
+	params = append(params, (pageIndex-1)*pageSize, pageSize)
+	itemSql += " order by s.connected_time desc LIMIT ?, ?"
+
+	db.Raw(countSql, params...).Scan(&total)
+
+	err = db.Raw(itemSql, params...).Scan(&results).Error
+
+	if results == nil {
+		results = make([]model.SessionForPage, 0)
+	}
+	return
+}
 
 func (r SessionRepository) FindByStatus(status string) (o []model.Session, err error) {
 	err = r.DB.Where("status = ?", status).Find(&o).Error
@@ -224,5 +264,24 @@ func (r SessionRepository) UpdateReadByIds(reviewed bool, ids []string) error {
 
 func (r SessionRepository) FindAllUnReviewed() (o []model.Session, err error) {
 	err = r.DB.Where("reviewed = false or reviewed is null").Find(&o).Error
+	return
+}
+
+func (r SessionRepository) AssetConnectNum(assetIds ...string) (total int64, err error) {
+
+	db := r.DB
+	var params []interface{}
+
+	countSql := "select count(*) from sessions as s "
+	if len(assetIds) == 1 {
+		params = append(params, assetIds[0])
+		countSql += "where s.asset_id = ?"
+	} else {
+		params = append(params, assetIds)
+		countSql += "where s.asset_id in ?"
+	}
+
+	db.Raw(countSql, params...).Scan(&total)
+
 	return
 }

@@ -135,12 +135,14 @@ func AssetPagingEndpoint(c echo.Context) error {
 	userGroupId := c.QueryParam("userGroupId")
 	ip := c.QueryParam("ip")
 
+	count := c.QueryParam("count")
+
 	order := c.QueryParam("order")
 	field := c.QueryParam("field")
 
 	account, _ := GetCurrentAccount(c)
 
-	items, total, err := assetRepository.Find(pageIndex, pageSize, name, protocol, tags, account, owner, sharer, userGroupId, ip, order, field)
+	items, total, err := assetRepository.Find(pageIndex, pageSize, name, protocol, tags, account, owner, sharer, userGroupId, ip, order, field, count == "true")
 	if err != nil {
 		return err
 	}
@@ -255,6 +257,20 @@ func AssetGetEndpoint(c echo.Context) (err error) {
 	}
 
 	return Success(c, itemMap)
+}
+
+func AssetGetConnectCountEndpoint(c echo.Context) (err error) {
+	tags := c.QueryParam("tags")
+
+	ids, err := assetRepository.FindIdsByTags(tags)
+	if err != nil {
+		return err
+	}
+	count, err := sessionRepository.AssetConnectNum(ids...)
+	if err != nil {
+		return err
+	}
+	return Success(c, count)
 }
 
 func AssetTcpingEndpoint(c echo.Context) (err error) {

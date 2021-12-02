@@ -68,6 +68,49 @@ func (r CredentialRepository) Find(pageIndex, pageSize int, name, order, field s
 	return
 }
 
+func (r CredentialRepository) List(pageIndex, pageSize int, name, order, field string, ids []string, account model.User) (o []model.CredentialForPage, total int64, err error) {
+	db := r.DB.Table("credentials").Select("credentials.id,credentials.name,credentials.type,credentials.username,credentials.owner,credentials.created,users.nickname as owner_name,COUNT(resource_sharers.user_id) as sharer_count").Joins("left join users on credentials.owner = users.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").Group("credentials.id")
+	dbCounter := r.DB.Table("credentials").Select("DISTINCT credentials.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").Group("credentials.id")
+
+	if constant.TypeUser == account.Type {
+		owner := account.ID
+		db = db.Where("credentials.owner = ? or resource_sharers.user_id = ?", owner, owner)
+		dbCounter = dbCounter.Where("credentials.owner = ? or resource_sharers.user_id = ?", owner, owner)
+	}
+	if len(ids) > 0 {
+
+		db = db.Where("credentials.id in ?", ids)
+		dbCounter = dbCounter.Where("credentials.id in ?", ids)
+	}
+	if len(name) > 0 {
+		db = db.Where("credentials.name like ?", "%"+name+"%")
+		dbCounter = dbCounter.Where("credentials.name like ?", "%"+name+"%")
+	}
+
+	err = dbCounter.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if order == "ascend" {
+		order = "asc"
+	} else {
+		order = "desc"
+	}
+
+	if field == "name" {
+		field = "name"
+	} else {
+		field = "created"
+	}
+
+	err = db.Order("credentials." + field + " " + order).Offset((pageIndex - 1) * pageSize).Limit(pageSize).Find(&o).Error
+	if o == nil {
+		o = make([]model.CredentialForPage, 0)
+	}
+	return
+}
+
 func (r CredentialRepository) Create(o *model.Credential) (err error) {
 	if err := r.Encrypt(o, config.GlobalCfg.EncryptionPassword); err != nil {
 		return err

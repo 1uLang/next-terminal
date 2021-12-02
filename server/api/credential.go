@@ -83,6 +83,27 @@ func CredentialPagingEndpoint(c echo.Context) error {
 	})
 }
 
+func CredentialListEndpoint(c echo.Context) error {
+	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
+	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
+	name := c.QueryParam("name")
+	ids := strings.Split("ids", ",")
+
+	order := c.QueryParam("order")
+	field := c.QueryParam("field")
+
+	account, _ := GetCurrentAccount(c)
+	items, total, err := credentialRepository.List(pageIndex, pageSize, name, order, field, ids, account)
+	if err != nil {
+		return err
+	}
+
+	return Success(c, H{
+		"total": total,
+		"items": items,
+	})
+}
+
 func CredentialUpdateEndpoint(c echo.Context) error {
 	id := c.Param("id")
 

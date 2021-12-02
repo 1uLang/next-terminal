@@ -136,6 +136,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 		assets.POST("/:id/tcping", AssetTcpingEndpoint)
 		assets.PUT("/:id", AssetUpdateEndpoint)
 		assets.GET("/:id", AssetGetEndpoint)
+		assets.GET("/connect-count", AssetGetConnectCountEndpoint)
 		assets.DELETE("/:id", AssetDeleteEndpoint)
 		assets.POST("/:id/change-owner", AssetChangeOwnerEndpoint)
 	}
@@ -156,6 +157,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 	credentials := e.Group("/credentials", Admin)
 	{
 		credentials.GET("", CredentialAllEndpoint)
+		credentials.GET("/list", CredentialListEndpoint)
 		credentials.GET("/paging", CredentialPagingEndpoint)
 		credentials.POST("", CredentialCreateEndpoint)
 		credentials.PUT("/:id", CredentialUpdateEndpoint)
@@ -166,6 +168,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 
 	sessions := e.Group("/sessions")
 	{
+		sessions.GET("/list", Admin(SessionListEndpoint))
 		sessions.GET("/paging", Admin(SessionPagingEndpoint))
 		sessions.POST("/:id/disconnect", Admin(SessionDisconnectEndpoint))
 		sessions.DELETE("/:id", Admin(SessionDeleteEndpoint))
@@ -267,6 +270,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 	{
 		accessGateways.GET("", AccessGatewayAllEndpoint)
 		accessGateways.POST("", AccessGatewayCreateEndpoint)
+		accessGateways.GET("/list", AccessGatewayListEndpoint)
 		accessGateways.GET("/paging", AccessGatewayPagingEndpoint)
 		accessGateways.PUT("/:id", AccessGatewayUpdateEndpoint)
 		accessGateways.DELETE("/:id", AccessGatewayDeleteEndpoint)
