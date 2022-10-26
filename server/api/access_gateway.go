@@ -23,7 +23,7 @@ func AccessGatewayCreateEndpoint(c echo.Context) error {
 		return err
 	}
 	// 连接网关
-	accessGatewayService.ReConnect(&item)
+	go accessGatewayService.ReConnect(&item)
 	return Success(c, item.ID)
 }
 
@@ -105,7 +105,7 @@ func AccessGatewayUpdateEndpoint(c echo.Context) error {
 	if err := accessGatewayRepository.UpdateById(&item, id); err != nil {
 		return err
 	}
-	accessGatewayService.ReConnect(&item)
+	go accessGatewayService.ReConnect(&item)
 	return Success(c, nil)
 }
 

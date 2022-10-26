@@ -40,8 +40,20 @@ func NotFound(c echo.Context, message string) error {
 	})
 }
 
+func checkToken(token string) bool {
+
+	cacheKey := userService.BuildCacheKeyByToken(token)
+	_, found := cache.GlobalCache.Get(cacheKey)
+	return !found
+}
 func GetToken(c echo.Context) string {
 	token := c.Request().Header.Get(constant.Token)
+	atoken := c.Request().Header.Get(constant.AToken)
+
+	if token == "" || token == "null" || checkToken(token) {
+		token = atoken
+		c.Request().Header.Set(constant.Token, atoken)
+	}
 	if len(token) > 0 {
 		return token
 	}

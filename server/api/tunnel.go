@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"github.com/labstack/echo/v4"
 	"path"
 	"strconv"
 	"time"
@@ -17,7 +18,6 @@ import (
 	"next-terminal/server/utils"
 
 	"github.com/gorilla/websocket"
-	"github.com/labstack/echo/v4"
 )
 
 const (
@@ -277,7 +277,7 @@ func setAssetConfig(attributes map[string]string, s model.Session, configuration
 			}
 			realPath := path.Join(storageService.GetBaseDrivePath(), storageId)
 			configuration.SetParameter(guacd.EnableDrive, "true")
-			configuration.SetParameter(guacd.DriveName, "Next Terminal Filesystem")
+			configuration.SetParameter(guacd.DriveName, "Cloud Fort Filesystem")
 			configuration.SetParameter(guacd.DrivePath, realPath)
 			log.Debugf("[%v] 会话 %v:%v 映射目录地址为 %v", s.ID, s.IP, s.Port, realPath)
 		} else {

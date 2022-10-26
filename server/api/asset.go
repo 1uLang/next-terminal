@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"encoding/base64"
 	"encoding/csv"
 	"encoding/json"
 	"errors"
@@ -215,6 +216,41 @@ func AssetUpdateEndpoint(c echo.Context) error {
 		return err
 	}
 
+	return Success(c, nil)
+}
+func AssetBatchUpdateEndpoint(c echo.Context) error {
+
+	m := echo.Map{}
+	if err := c.Bind(&m); err != nil {
+		return err
+	}
+
+	data, _ := json.Marshal(m)
+	var item struct {
+		AccountType  string   `json:"accountType" `  //账号类型 下拉框 id
+		Ids          []string `json:"ids"`           //资产ID
+		Username     string   `json:"username" `     //授权账户
+		Password     string   `json:"password" `     //新密码
+		CredentialId string   `json:"credentialId" ` //授权凭证ID
+	}
+	if err := json.Unmarshal(data, &item); err != nil {
+		return err
+	}
+	for _, id := range item.Ids {
+		if err := PreCheckAssetPermission(c, id); err != nil {
+			return err
+		}
+	}
+	if item.Password != "" && item.Password != "-" {
+		encryptedCBC, err := utils.AesEncryptCBC([]byte(item.Password), config.GlobalCfg.EncryptionPassword)
+		if err != nil {
+			return err
+		}
+		item.Password = base64.StdEncoding.EncodeToString(encryptedCBC)
+	}
+	if err := assetRepository.BatchUpdate(item.Ids, item.Username, item.Password, item.CredentialId, item.AccountType); err != nil {
+		return err
+	}
 	return Success(c, nil)
 }
 

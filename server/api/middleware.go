@@ -87,15 +87,13 @@ func TcpWall(next echo.HandlerFunc) echo.HandlerFunc {
 
 func urlCheckAuth(uri string) bool {
 	auths := map[string]bool{
-		"/assets/paging":      true,
-		"/assets/":            true,
-		"/access-gateways":    true,
-		"/credentials/paging": true,
-		"/credentials/":       true,
-		"/sessions/paging":    true,
-		"/sessions/":          true,
-		"/tunnel":             true,
-		"/info":               true,
+		"/assets/":         true,
+		"/access-gateways": true,
+		"/credentials/":    true,
+		"/sessions/":       true,
+		"/tunnel":          true,
+		"/info":            true,
+		"/commands":        true,
 	}
 	for url := range auths {
 		if strings.HasPrefix(uri, url) {

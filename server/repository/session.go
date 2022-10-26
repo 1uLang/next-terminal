@@ -23,6 +23,35 @@ func NewSessionRepository(db *gorm.DB) *SessionRepository {
 	return sessionRepository
 }
 
+func (r SessionRepository) Statistics(assetIds []string) (total, duration int64, err error) {
+
+	db := r.DB
+	var params []interface{}
+	var results []model.SessionForPage
+	params = append(params, "disconnected")
+
+	itemSql := "SELECT s.asset_id, s.connected_time, s.disconnected_time FROM sessions s LEFT JOIN assets a ON s.asset_id = a.id LEFT JOIN users u ON s.creator = u.id WHERE s.STATUS = ? "
+	countSql := "select count(*) from sessions as s where s.status = ? "
+
+	if len(assetIds) > 0 && assetIds[0] != "" {
+		itemSql += " and s.asset_id in ?"
+		countSql += " and s.asset_id in ?"
+		params = append(params, assetIds)
+	}
+	itemSql += " order by s.connected_time desc "
+
+	db.Raw(countSql, params...).Scan(&total)
+
+	err = db.Raw(itemSql, params...).Scan(&results).Error
+	if results == nil {
+		results = make([]model.SessionForPage, 0)
+	}
+	for _, v := range results {
+		duration += v.DisconnectedTime.Unix() - v.ConnectedTime.Unix()
+	}
+	return
+
+}
 func (r SessionRepository) Find(pageIndex, pageSize int, status, userId, clientIp, assetId, protocol, reviewed string) (results []model.SessionForPage, total int64, err error) {
 
 	db := r.DB
@@ -86,12 +115,6 @@ func (r SessionRepository) ListAssetIds(pageIndex, pageSize int, clientIp, asset
 	itemSql := "SELECT s.id,s.mode, s.protocol,s.recording, s.connection_id, s.asset_id, s.creator, s.client_ip, s.width, s.height, s.ip, s.port, s.username, s.status, s.connected_time, s.disconnected_time,s.code,s.reviewed, s.message, a.name AS asset_name, u.nickname AS creator_name FROM sessions s LEFT JOIN assets a ON s.asset_id = a.id LEFT JOIN users u ON s.creator = u.id WHERE s.STATUS = ? "
 	countSql := "select count(*) from sessions as s where s.status = ? "
 
-	if len(assetIds) > 0 {
-		itemSql += " and s.asset_id in ?"
-		countSql += " and s.asset_id in ?"
-		params = append(params, assetIds)
-	}
-
 	if len(clientIp) > 0 {
 		itemSql += " and s.client_ip like ?"
 		countSql += " and s.client_ip like ?"
@@ -102,6 +125,10 @@ func (r SessionRepository) ListAssetIds(pageIndex, pageSize int, clientIp, asset
 		itemSql += " and s.asset_id = ?"
 		countSql += " and s.asset_id = ?"
 		params = append(params, assetId)
+	} else if len(assetIds) > 0 && assetIds[0] != "" {
+		itemSql += " and s.asset_id in ?"
+		countSql += " and s.asset_id in ?"
+		params = append(params, assetIds)
 	}
 
 	params = append(params, (pageIndex-1)*pageSize, pageSize)
@@ -110,10 +137,10 @@ func (r SessionRepository) ListAssetIds(pageIndex, pageSize int, clientIp, asset
 	db.Raw(countSql, params...).Scan(&total)
 
 	err = db.Raw(itemSql, params...).Scan(&results).Error
-
 	if results == nil {
 		results = make([]model.SessionForPage, 0)
 	}
+
 	return
 }
 

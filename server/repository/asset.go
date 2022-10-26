@@ -288,6 +288,16 @@ func (r AssetRepository) FindByIdAndDecrypt(id string) (o model.Asset, err error
 	return
 }
 
+func (r AssetRepository) BatchUpdate(ids []string, username, password, credentialId, accountType string) error {
+	if accountType == "credential" {
+		sql := "update assets set credential_id = ?,account_type = ? where id in ?"
+		return r.DB.Exec(sql, credentialId, accountType, ids).Error
+	} else if accountType == "custom" {
+		sql := "update assets set username = ?,password = ?,account_type = ? where id in ?"
+		return r.DB.Exec(sql, username, password, accountType, ids).Error
+	}
+	return nil
+}
 func (r AssetRepository) UpdateById(o *model.Asset, id string) error {
 	o.ID = id
 	return r.DB.Updates(o).Error

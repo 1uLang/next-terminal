@@ -5,7 +5,7 @@ import (
 )
 
 const (
-	Version = "v1.2.1"
+	Version = "v1.2.7"
 	Banner  = `
  #######                         #####                              
 #        ####  #####  #####    #     # #       ####  #    # #####  
@@ -19,6 +19,7 @@ const (
 )
 
 const Token = "X-Auth-Token"
+const AToken = "A-Auth-Token"
 
 const (
 	SSH    = "ssh"

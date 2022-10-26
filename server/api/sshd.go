@@ -112,7 +112,7 @@ func totpUI(sess *ssh.Session, user model.User, remoteAddr string, username stri
 
 func mainUI(sess *ssh.Session, user model.User) {
 	prompt := promptui.Select{
-		Label:  "欢迎使用 Next Terminal，请选择您要使用的功能",
+		Label:  "欢迎使用 Cloud  Fort，请选择您要使用的功能",
 		Items:  []string{"我的资产", "退出系统"},
 		Stdin:  *sess,
 		Stdout: *sess,

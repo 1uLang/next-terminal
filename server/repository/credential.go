@@ -2,7 +2,6 @@ package repository
 
 import (
 	"encoding/base64"
-
 	"next-terminal/server/config"
 	"next-terminal/server/constant"
 	"next-terminal/server/model"
@@ -30,8 +29,12 @@ func (r CredentialRepository) FindByUser(account model.User) (o []model.Credenti
 }
 
 func (r CredentialRepository) Find(pageIndex, pageSize int, name, order, field string, account model.User) (o []model.CredentialForPage, total int64, err error) {
-	db := r.DB.Table("credentials").Select("credentials.id,credentials.name,credentials.type,credentials.username,credentials.owner,credentials.created,users.nickname as owner_name,COUNT(resource_sharers.user_id) as sharer_count").Joins("left join users on credentials.owner = users.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").Group("credentials.id")
-	dbCounter := r.DB.Table("credentials").Select("DISTINCT credentials.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").Group("credentials.id")
+	db := r.DB.Table("credentials").Select("credentials.id,credentials.name,credentials.type,credentials.username,credentials.owner,credentials.created,users.nickname as owner_name,COUNT(resource_sharers.user_id) as sharer_count").
+		Joins("left join users on credentials.owner = users.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").
+		Group("credentials.id")
+	dbCounter := r.DB.Table("credentials").Select("DISTINCT credentials.id").
+		Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").
+		Group("credentials.id")
 
 	if constant.TypeUser == account.Type {
 		owner := account.ID
@@ -69,8 +72,12 @@ func (r CredentialRepository) Find(pageIndex, pageSize int, name, order, field s
 }
 
 func (r CredentialRepository) List(pageIndex, pageSize int, name, order, field string, ids []string, account model.User) (o []model.CredentialForPage, total int64, err error) {
-	db := r.DB.Table("credentials").Select("credentials.id,credentials.name,credentials.type,credentials.username,credentials.owner,credentials.created,users.nickname as owner_name,COUNT(resource_sharers.user_id) as sharer_count").Joins("left join users on credentials.owner = users.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").Group("credentials.id")
-	dbCounter := r.DB.Table("credentials").Select("DISTINCT credentials.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").Group("credentials.id")
+	db := r.DB.Table("credentials").Select("credentials.id,credentials.name,credentials.type,credentials.username,credentials.owner,credentials.created,users.nickname as owner_name,COUNT(resource_sharers.user_id) as sharer_count").
+		Joins("left join users on credentials.owner = users.id").Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").
+		Group("credentials.id")
+	dbCounter := r.DB.Table("credentials").Select("DISTINCT credentials.id").
+		Joins("left join resource_sharers on credentials.id = resource_sharers.resource_id").
+		Group("credentials.id")
 
 	if constant.TypeUser == account.Type {
 		owner := account.ID
@@ -78,7 +85,6 @@ func (r CredentialRepository) List(pageIndex, pageSize int, name, order, field s
 		dbCounter = dbCounter.Where("credentials.owner = ? or resource_sharers.user_id = ?", owner, owner)
 	}
 	if len(ids) > 0 {
-
 		db = db.Where("credentials.id in ?", ids)
 		dbCounter = dbCounter.Where("credentials.id in ?", ids)
 	}

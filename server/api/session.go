@@ -27,6 +27,21 @@ import (
 	"gorm.io/gorm"
 )
 
+// SessionStatistics 会话统计 连接次数，连接时长
+func SessionStatistics(c echo.Context) error {
+	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
+
+	count, duration, err := sessionRepository.Statistics(assetIds)
+
+	if err != nil {
+		return err
+	}
+
+	return Success(c, H{
+		"count":    count,
+		"duration": duration,
+	})
+}
 func SessionPagingEndpoint(c echo.Context) error {
 	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))

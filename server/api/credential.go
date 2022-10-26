@@ -87,7 +87,7 @@ func CredentialListEndpoint(c echo.Context) error {
 	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
 	name := c.QueryParam("name")
-	ids := strings.Split("ids", ",")
+	ids := strings.Split(c.QueryParam("ids"), ",")
 
 	order := c.QueryParam("order")
 	field := c.QueryParam("field")

@@ -130,8 +130,10 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 	assets := e.Group("/assets", Admin)
 	{
 		assets.GET("", AssetAllEndpoint)
+		assets.GET("/statistics", Admin(SessionStatistics))
 		assets.POST("", AssetCreateEndpoint)
 		assets.POST("/import", AssetImportEndpoint)
+		assets.POST("/batch", AssetBatchUpdateEndpoint)
 		assets.GET("/paging", AssetPagingEndpoint)
 		assets.POST("/:id/tcping", AssetTcpingEndpoint)
 		assets.PUT("/:id", AssetUpdateEndpoint)
@@ -169,6 +171,7 @@ func SetupRoutes(db *gorm.DB) *echo.Echo {
 	sessions := e.Group("/sessions")
 	{
 		sessions.GET("/list", Admin(SessionListEndpoint))
+		sessions.GET("/statistics", Admin(SessionStatistics))
 		sessions.GET("/paging", Admin(SessionPagingEndpoint))
 		sessions.POST("/:id/disconnect", Admin(SessionDisconnectEndpoint))
 		sessions.DELETE("/:id", Admin(SessionDeleteEndpoint))
