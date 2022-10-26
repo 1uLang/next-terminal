@@ -5,8 +5,9 @@ import (
 )
 
 const (
-	Version = "v1.2.1"
-	Banner  = `
+	AppVersion = "v1.2.7"
+	AppName    = "Cloud Fort"
+	AppBanner  = `
  #######                         #####                              
 #        ####  #####  #####    #     # #       ####  #    # #####  
 #       #    # #    #   #      #       #      #    # #    # #    # 
@@ -19,8 +20,13 @@ const (
 )
 
 const Token = "X-Auth-Token"
+const AToken = "A-Auth-Token"
+
+type Key string
 
 const (
+	DB Key = "db"
+
 	SSH    = "ssh"
 	RDP    = "rdp"
 	VNC    = "vnc"
@@ -52,11 +58,13 @@ const (
 	Disconnected = "disconnected" // 会话状态：已断开连接
 
 	Guacd    = "guacd"    // 接入模式：guacd
-	Naive    = "naive"    // 接入模式：原生
+	Native   = "native"   // 接入模式：原生
 	Terminal = "terminal" // 接入模式：终端
 
 	TypeUser  = "user"  // 普通用户
 	TypeAdmin = "admin" // 管理员
+
+	SourceLdap = "ldap" // 从LDAP同步的用户
 
 	StatusEnabled  = "enabled"
 	StatusDisabled = "disabled"
@@ -66,10 +74,16 @@ const (
 	SocksProxyPort     = "socks-proxy-port"
 	SocksProxyUsername = "socks-proxy-username"
 	SocksProxyPassword = "socks-proxy-password"
+
+	LoginToken   = "login-token"
+	AccessToken  = "access-token"
+	ShareSession = "share-session"
+
+	Anonymous = "anonymous"
 )
 
 var SSHParameterNames = []string{guacd.FontName, guacd.FontSize, guacd.ColorScheme, guacd.Backspace, guacd.TerminalType, SshMode, SocksProxyEnable, SocksProxyHost, SocksProxyPort, SocksProxyUsername, SocksProxyPassword}
-var RDPParameterNames = []string{guacd.Domain, guacd.RemoteApp, guacd.RemoteAppDir, guacd.RemoteAppArgs, guacd.EnableDrive, guacd.DrivePath}
+var RDPParameterNames = []string{guacd.Domain, guacd.RemoteApp, guacd.RemoteAppDir, guacd.RemoteAppArgs, guacd.EnableDrive, guacd.DrivePath, guacd.ColorDepth, guacd.ForceLossless, guacd.PreConnectionId, guacd.PreConnectionBlob}
 var VNCParameterNames = []string{guacd.ColorDepth, guacd.Cursor, guacd.SwapRedBlue, guacd.DestHost, guacd.DestPort}
 var TelnetParameterNames = []string{guacd.FontName, guacd.FontSize, guacd.ColorScheme, guacd.Backspace, guacd.TerminalType, guacd.UsernameRegex, guacd.PasswordRegex, guacd.LoginSuccessRegex, guacd.LoginFailureRegex}
 var KubernetesParameterNames = []string{guacd.FontName, guacd.FontSize, guacd.ColorScheme, guacd.Backspace, guacd.TerminalType, guacd.Namespace, guacd.Pod, guacd.Container, guacd.UesSSL, guacd.ClientCert, guacd.ClientKey, guacd.CaCert, guacd.IgnoreCert}

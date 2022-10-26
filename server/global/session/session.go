@@ -2,7 +2,9 @@ package session
 
 import (
 	"fmt"
+	"sync"
 
+	"next-terminal/server/dto"
 	"next-terminal/server/guacd"
 	"next-terminal/server/term"
 
@@ -17,6 +19,27 @@ type Session struct {
 	GuacdTunnel  *guacd.Tunnel
 	NextTerminal *term.NextTerminal
 	Observer     *Manager
+	mutex        sync.Mutex
+}
+
+func (s *Session) WriteMessage(msg dto.Message) error {
+	if s.WebSocket == nil {
+		return nil
+	}
+	defer s.mutex.Unlock()
+	s.mutex.Lock()
+	message := []byte(msg.ToString())
+	return s.WebSocket.WriteMessage(websocket.TextMessage, message)
+}
+
+func (s *Session) WriteString(str string) error {
+	if s.WebSocket == nil {
+		return nil
+	}
+	defer s.mutex.Unlock()
+	s.mutex.Lock()
+	message := []byte(str)
+	return s.WebSocket.WriteMessage(websocket.TextMessage, message)
 }
 
 type Manager struct {
@@ -47,9 +70,9 @@ func NewObserver(id string) *Manager {
 	}
 }
 
-func (m *Manager) Run() {
+func (m *Manager) Start() {
 	defer fmt.Printf("Session Manager %v End\n", m.id)
-	fmt.Printf("Session Manager %v  Run\n", m.id)
+	fmt.Printf("Session Manager %v  Open\n", m.id)
 	for {
 		select {
 		case s := <-m.Add:
@@ -61,7 +84,7 @@ func (m *Manager) Run() {
 					_ = ss.GuacdTunnel.Close()
 				}
 				if ss.NextTerminal != nil {
-					_ = ss.NextTerminal.Close()
+					ss.NextTerminal.Close()
 				}
 
 				if ss.WebSocket != nil {
@@ -94,5 +117,5 @@ var GlobalSessionManager *Manager
 
 func init() {
 	GlobalSessionManager = NewManager()
-	go GlobalSessionManager.Run()
+	go GlobalSessionManager.Start()
 }

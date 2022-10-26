@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+	"fmt"
 	"net/smtp"
 
 	"next-terminal/server/constant"
@@ -10,16 +12,11 @@ import (
 	"github.com/jordan-wright/email"
 )
 
-type MailService struct {
-	propertyRepository *repository.PropertyRepository
+type mailService struct {
 }
 
-func NewMailService(propertyRepository *repository.PropertyRepository) *MailService {
-	return &MailService{propertyRepository: propertyRepository}
-}
-
-func (r MailService) SendMail(to, subject, text string) {
-	propertiesMap := r.propertyRepository.FindAllMap()
+func (r mailService) SendMail(to, subject, text string) {
+	propertiesMap := repository.PropertyRepository.FindAllMap(context.TODO())
 	host := propertiesMap[constant.MailHost]
 	port := propertiesMap[constant.MailPort]
 	username := propertiesMap[constant.MailUsername]
@@ -31,7 +28,7 @@ func (r MailService) SendMail(to, subject, text string) {
 	}
 
 	e := email.NewEmail()
-	e.From = "Next Terminal <" + username + ">"
+	e.From = fmt.Sprintf("%s <%s>", constant.AppName, username)
 	e.To = []string{to}
 	e.Subject = subject
 	e.Text = []byte(text)

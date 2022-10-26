@@ -22,7 +22,7 @@ func NewNextTerminal(ip string, port int, username, password, privateKey, passph
 	if err != nil {
 		return nil, err
 	}
-	return newNT(err, sshClient, pipe, recording, term, rows, cols)
+	return newNT(sshClient, pipe, recording, term, rows, cols)
 }
 
 func NewNextTerminalUseSocks(ip string, port int, username, password, privateKey, passphrase string, rows, cols int, recording, term string, pipe bool, socksProxyHost, socksProxyPort, socksProxyUsername, socksProxyPassword string) (*NextTerminal, error) {
@@ -30,10 +30,10 @@ func NewNextTerminalUseSocks(ip string, port int, username, password, privateKey
 	if err != nil {
 		return nil, err
 	}
-	return newNT(err, sshClient, pipe, recording, term, rows, cols)
+	return newNT(sshClient, pipe, recording, term, rows, cols)
 }
 
-func newNT(err error, sshClient *ssh.Client, pipe bool, recording string, term string, rows int, cols int) (*NextTerminal, error) {
+func newNT(sshClient *ssh.Client, pipe bool, recording string, term string, rows int, cols int) (*NextTerminal, error) {
 	sshSession, err := sshClient.NewSession()
 	if err != nil {
 		return nil, err
@@ -79,20 +79,23 @@ func (ret *NextTerminal) Write(p []byte) (int, error) {
 	return ret.StdinPipe.Write(p)
 }
 
-func (ret *NextTerminal) Close() error {
+func (ret *NextTerminal) Close() {
+
+	if ret.SftpClient != nil {
+		_ = ret.SftpClient.Close()
+	}
+
 	if ret.SshSession != nil {
-		return ret.SshSession.Close()
+		_ = ret.SshSession.Close()
 	}
 
 	if ret.SshClient != nil {
-		return ret.SshClient.Close()
+		_ = ret.SshClient.Close()
 	}
 
 	if ret.Recorder != nil {
-		return ret.Close()
+		ret.Recorder.Close()
 	}
-
-	return nil
 }
 
 func (ret *NextTerminal) WindowChange(h int, w int) error {

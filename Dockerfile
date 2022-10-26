@@ -9,16 +9,20 @@ WORKDIR /app
 COPY . .
 
 RUN sed -i 's/dl-cdn.alpinelinux.org/mirrors.ustc.edu.cn/g' /etc/apk/repositories
-RUN apk add gcc g++
+RUN #apk add upx
 RUN go mod tidy
+RUN sh get_arch.sh
 RUN echo "Hello, my CPU architecture is $(uname -m)"
-RUN go env;CGO_ENABLED=1 GOOS=linux GOARCH=$ARCH go build -a -ldflags '-linkmode external -extldflags "-static"' -o next-terminal main.go
+RUN cp -r /app/web/build /app/server/resource/
+RUN go env;CGO_ENABLED=0 GOOS=linux GOARCH=$ARCH go build -ldflags '-s -w' -o next-terminal main.go
+RUN #upx next-terminal
 
 FROM alpine:latest
 
+LABEL MAINTAINER="helloworld1024@foxmail.com"
+
 ENV TZ Asia/Shanghai
 ENV DB sqlite
-ENV CONTAINER "true"
 ENV SQLITE_FILE './data/sqlite/next-terminal.db'
 ENV SERVER_PORT 8088
 ENV SERVER_ADDR 0.0.0.0:$SERVER_PORT
@@ -32,7 +36,6 @@ RUN touch config.yml
 
 COPY --from=builder /app/next-terminal ./
 COPY --from=builder /app/LICENSE ./
-COPY --from=builder /app/web/build ./web/build
 
 EXPOSE $SERVER_PORT $SSHD_PORT
 

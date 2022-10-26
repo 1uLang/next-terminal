@@ -21,13 +21,10 @@ web/build
 *.swp
 
 
-# playground
-playground/data
-playground/drive
-playground/recording
-
-/log
-
-
 # next terminal
-/recording
+/data/
+/logs/
+/server/resource/static/
+/server/resource/*.html
+/server/resource/*.json
+/server/resource/*.ico

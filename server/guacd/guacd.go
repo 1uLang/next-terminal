@@ -10,8 +10,6 @@ import (
 )
 
 const (
-	Host                = "host"
-	Port                = "port"
 	EnableRecording     = "enable-recording"
 	RecordingPath       = "recording-path"
 	CreateRecordingPath = "create-recording-path"
@@ -21,6 +19,9 @@ const (
 	ColorScheme  = "color-scheme"
 	Backspace    = "backspace"
 	TerminalType = "terminal-type"
+
+	PreConnectionId   = "preconnection-id"
+	PreConnectionBlob = "preconnection-blob"
 
 	EnableDrive              = "enable-drive"
 	DriveName                = "drive-name"
@@ -33,7 +34,9 @@ const (
 	EnableMenuAnimations     = "enable-menu-animations"
 	DisableBitmapCaching     = "disable-bitmap-caching"
 	DisableOffscreenCaching  = "disable-offscreen-caching"
-	DisableGlyphCaching      = "disable-glyph-caching"
+	// DisableGlyphCaching Deprecated
+	DisableGlyphCaching = "disable-glyph-caching"
+	ForceLossless       = "force-lossless"
 
 	Domain        = "domain"
 	RemoteApp     = "remote-app"
@@ -62,7 +65,7 @@ const (
 )
 
 const Delimiter = ';'
-const Version = "VERSION_1_3_0"
+const Version = "VERSION_1_4_0"
 
 type Configuration struct {
 	ConnectionID string

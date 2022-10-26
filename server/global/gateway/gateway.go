@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 
-	"next-terminal/server/config"
+	"next-terminal/server/log"
+
 	"next-terminal/server/utils"
 
 	"golang.org/x/crypto/ssh"
@@ -17,27 +19,25 @@ import (
 type Gateway struct {
 	ID        string // 接入网关ID
 	Connected bool   // 是否已连接
-	LocalHost string // 隧道映射到本地的IP地址
 	SshClient *ssh.Client
 	Message   string // 失败原因
 
-	tunnels map[string]*Tunnel
+	tunnels *sync.Map
 
 	Add  chan *Tunnel
 	Del  chan string
 	exit chan bool
 }
 
-func NewGateway(id, localhost string, connected bool, message string, client *ssh.Client) *Gateway {
+func NewGateway(id string, connected bool, message string, client *ssh.Client) *Gateway {
 	return &Gateway{
 		ID:        id,
-		LocalHost: localhost,
 		Connected: connected,
 		Message:   message,
 		SshClient: client,
 		Add:       make(chan *Tunnel),
 		Del:       make(chan string),
-		tunnels:   map[string]*Tunnel{},
+		tunnels:   new(sync.Map),
 		exit:      make(chan bool, 1),
 	}
 }
@@ -46,12 +46,15 @@ func (g *Gateway) Run() {
 	for {
 		select {
 		case t := <-g.Add:
-			g.tunnels[t.ID] = t
-			go t.Run()
+			g.tunnels.Store(t.ID, t)
+			log.Info("add tunnel: %s", t.ID)
+			go t.Open()
 		case k := <-g.Del:
-			if _, ok := g.tunnels[k]; ok {
-				g.tunnels[k].Close()
-				delete(g.tunnels, k)
+			if val, ok := g.tunnels.Load(k); ok {
+				if vval, vok := val.(*Tunnel); vok {
+					vval.Close()
+					g.tunnels.Delete(k)
+				}
 			}
 		case <-g.exit:
 			return
@@ -60,15 +63,14 @@ func (g *Gateway) Run() {
 }
 
 func (g *Gateway) Close() {
-	g.exit <- true
-	if g.SshClient != nil {
-		_ = g.SshClient.Close()
-	}
-	if len(g.tunnels) > 0 {
-		for _, tunnel := range g.tunnels {
-			tunnel.Close()
+	g.tunnels.Range(func(key, value interface{}) bool {
+		if val, ok := value.(*Tunnel); ok {
+			val.Close()
 		}
-	}
+		return true
+	})
+	g.exit <- true
+
 }
 
 func (g *Gateway) OpenSshTunnel(id, ip string, port int) (exposedIP string, exposedPort int, err error) {
@@ -80,26 +82,16 @@ func (g *Gateway) OpenSshTunnel(id, ip string, port int) (exposedIP string, expo
 	if err != nil {
 		return "", 0, err
 	}
-	localHost := g.LocalHost
-	if localHost == "" {
-		if config.GlobalCfg.Container {
-			localIp, err := utils.GetLocalIp()
-			if err != nil {
-				hostname, err := os.Hostname()
-				if err != nil {
-					return "", 0, err
-				} else {
-					localHost = hostname
-				}
-			} else {
-				localHost = localIp
-			}
-		} else {
-			localHost = "localhost"
-		}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", 0, err
 	}
 
-	localAddr := fmt.Sprintf("%s:%d", localHost, localPort)
+	// debug
+	//hostname = "0.0.0.0"
+
+	localAddr := fmt.Sprintf("%s:%d", hostname, localPort)
 	listener, err := net.Listen("tcp", localAddr)
 	if err != nil {
 		return "", 0, err
@@ -107,8 +99,9 @@ func (g *Gateway) OpenSshTunnel(id, ip string, port int) (exposedIP string, expo
 
 	ctx, cancel := context.WithCancel(context.Background())
 	tunnel := &Tunnel{
-		ID:         id,
-		LocalHost:  g.LocalHost,
+		ID:        id,
+		LocalHost: hostname,
+		//LocalHost:  "docker.for.mac.host.internal",
 		LocalPort:  localPort,
 		Gateway:    g,
 		RemoteHost: ip,
@@ -123,7 +116,5 @@ func (g *Gateway) OpenSshTunnel(id, ip string, port int) (exposedIP string, expo
 }
 
 func (g Gateway) CloseSshTunnel(id string) {
-	if g.tunnels[id] != nil {
-		g.tunnels[id].Close()
-	}
+	g.Del <- id
 }
