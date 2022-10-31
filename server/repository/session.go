@@ -249,10 +249,9 @@ func (r sessionRepository) ListAssetIds(c context.Context, pageIndex, pageSize i
 		params = append(params, assetIds)
 	}
 
+	db.Raw(countSql, params...).Scan(&total)
 	params = append(params, (pageIndex-1)*pageSize, pageSize)
 	itemSql += " order by s.connected_time desc LIMIT ?, ?"
-
-	db.Raw(countSql, params...).Scan(&total)
 
 	err = db.Raw(itemSql, params...).Scan(&results).Error
 	if results == nil {
