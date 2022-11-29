@@ -1,13 +1,13 @@
 package gateway
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"net"
+	"next-terminal/server/common/term"
 	"os"
+	"sync"
 
-	"next-terminal/server/config"
 	"next-terminal/server/utils"
 
 	"golang.org/x/crypto/ssh"
@@ -15,115 +15,91 @@ import (
 
 // Gateway 接入网关
 type Gateway struct {
-	ID        string // 接入网关ID
-	Connected bool   // 是否已连接
-	LocalHost string // 隧道映射到本地的IP地址
-	SshClient *ssh.Client
-	Message   string // 失败原因
+	ID         string // 接入网关ID
+	IP         string
+	Port       int
+	Username   string
+	Password   string
+	PrivateKey string
+	Passphrase string
+	Connected  bool   // 是否已连接
+	Message    string // 失败原因
+	SshClient  *ssh.Client
 
+	mutex   sync.Mutex
 	tunnels map[string]*Tunnel
-
-	Add  chan *Tunnel
-	Del  chan string
-	exit chan bool
-}
-
-func NewGateway(id, localhost string, connected bool, message string, client *ssh.Client) *Gateway {
-	return &Gateway{
-		ID:        id,
-		LocalHost: localhost,
-		Connected: connected,
-		Message:   message,
-		SshClient: client,
-		Add:       make(chan *Tunnel),
-		Del:       make(chan string),
-		tunnels:   map[string]*Tunnel{},
-		exit:      make(chan bool, 1),
-	}
-}
-
-func (g *Gateway) Run() {
-	for {
-		select {
-		case t := <-g.Add:
-			g.tunnels[t.ID] = t
-			go t.Run()
-		case k := <-g.Del:
-			if _, ok := g.tunnels[k]; ok {
-				g.tunnels[k].Close()
-				delete(g.tunnels, k)
-			}
-		case <-g.exit:
-			return
-		}
-	}
-}
-
-func (g *Gateway) Close() {
-	g.exit <- true
-	if g.SshClient != nil {
-		_ = g.SshClient.Close()
-	}
-	if len(g.tunnels) > 0 {
-		for _, tunnel := range g.tunnels {
-			tunnel.Close()
-		}
-	}
 }
 
 func (g *Gateway) OpenSshTunnel(id, ip string, port int) (exposedIP string, exposedPort int, err error) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
 	if !g.Connected {
-		return "", 0, errors.New(g.Message)
+		sshClient, err := term.NewSshClient(g.IP, g.Port, g.Username, g.Password, g.PrivateKey, g.Passphrase)
+		if err != nil {
+			g.Connected = false
+			g.Message = "接入网关不可用：" + err.Error()
+			return "", 0, errors.New(g.Message)
+		} else {
+			g.Connected = true
+			g.SshClient = sshClient
+			g.Message = "使用中"
+		}
 	}
 
 	localPort, err := utils.GetAvailablePort()
 	if err != nil {
 		return "", 0, err
 	}
-	localHost := g.LocalHost
-	if localHost == "" {
-		if config.GlobalCfg.Container {
-			localIp, err := utils.GetLocalIp()
-			if err != nil {
-				hostname, err := os.Hostname()
-				if err != nil {
-					return "", 0, err
-				} else {
-					localHost = hostname
-				}
-			} else {
-				localHost = localIp
-			}
-		} else {
-			localHost = "localhost"
-		}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return "", 0, err
 	}
 
-	localAddr := fmt.Sprintf("%s:%d", localHost, localPort)
+	// debug
+	//hostname = "0.0.0.0"
+
+	localAddr := fmt.Sprintf("%s:%d", hostname, localPort)
 	listener, err := net.Listen("tcp", localAddr)
 	if err != nil {
 		return "", 0, err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
 	tunnel := &Tunnel{
-		ID:         id,
-		LocalHost:  g.LocalHost,
-		LocalPort:  localPort,
-		Gateway:    g,
-		RemoteHost: ip,
-		RemotePort: port,
-		ctx:        ctx,
-		cancel:     cancel,
+		id:        id,
+		localHost: hostname,
+		//localHost:  "docker.for.mac.host.internal",
+		localPort:  localPort,
+		remoteHost: ip,
+		remotePort: port,
 		listener:   listener,
 	}
-	g.Add <- tunnel
+	go tunnel.Open(g.SshClient)
+	g.tunnels[tunnel.id] = tunnel
 
-	return tunnel.LocalHost, tunnel.LocalPort, nil
+	return tunnel.localHost, tunnel.localPort, nil
 }
 
-func (g Gateway) CloseSshTunnel(id string) {
-	if g.tunnels[id] != nil {
-		g.tunnels[id].Close()
+func (g *Gateway) CloseSshTunnel(id string) {
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
+	t := g.tunnels[id]
+	if t != nil {
+		t.Close()
+		delete(g.tunnels, id)
+	}
+
+	if len(g.tunnels) == 0 {
+		if g.SshClient != nil {
+			_ = g.SshClient.Close()
+		}
+		g.Connected = false
+		g.Message = "暂未使用"
+	}
+}
+
+func (g *Gateway) Close() {
+	for id := range g.tunnels {
+		g.CloseSshTunnel(id)
 	}
 }

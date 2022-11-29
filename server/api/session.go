@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -11,38 +12,23 @@ import (
 	"path"
 	"strconv"
 	"strings"
-	"sync"
 
-	"next-terminal/server/constant"
+	"next-terminal/server/common"
+	"next-terminal/server/common/maps"
+	"next-terminal/server/common/nt"
 	"next-terminal/server/global/session"
-	"next-terminal/server/guacd"
-	"next-terminal/server/log"
 	"next-terminal/server/model"
+	"next-terminal/server/repository"
 	"next-terminal/server/service"
 	"next-terminal/server/utils"
 
-	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/pkg/sftp"
-	"gorm.io/gorm"
 )
 
-// SessionStatistics 会话统计 连接次数，连接时长
-func SessionStatistics(c echo.Context) error {
-	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
+type SessionApi struct{}
 
-	count, duration, err := sessionRepository.Statistics(assetIds)
-
-	if err != nil {
-		return err
-	}
-
-	return Success(c, H{
-		"count":    count,
-		"duration": duration,
-	})
-}
-func SessionPagingEndpoint(c echo.Context) error {
+func (api SessionApi) SessionPagingEndpoint(c echo.Context) error {
 	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
 	status := c.QueryParam("status")
@@ -52,17 +38,17 @@ func SessionPagingEndpoint(c echo.Context) error {
 	protocol := c.QueryParam("protocol")
 	reviewed := c.QueryParam("reviewed")
 
-	items, total, err := sessionRepository.Find(pageIndex, pageSize, status, userId, clientIp, assetId, protocol, reviewed)
+	items, total, err := repository.SessionRepository.Find(context.TODO(), pageIndex, pageSize, status, userId, clientIp, assetId, protocol, reviewed)
 
 	if err != nil {
 		return err
 	}
 
 	for i := 0; i < len(items); i++ {
-		if status == constant.Disconnected && len(items[i].Recording) > 0 {
+		if status == nt.Disconnected && len(items[i].Recording) > 0 {
 
 			var recording string
-			if items[i].Mode == constant.Naive || items[i].Mode == constant.Terminal {
+			if items[i].Mode == nt.Native || items[i].Mode == nt.Terminal {
 				recording = items[i].Recording
 			} else {
 				recording = items[i].Recording + "/recording"
@@ -78,54 +64,15 @@ func SessionPagingEndpoint(c echo.Context) error {
 		}
 	}
 
-	return Success(c, H{
+	return Success(c, maps.Map{
 		"total": total,
 		"items": items,
 	})
 }
 
-func SessionListEndpoint(c echo.Context) error {
-	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
-	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
-	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
-	assetId := c.QueryParam("assetId")
-	status := c.QueryParam("status")
-	clientIp := c.QueryParam("clientIp")
-	items, total, err := sessionRepository.ListAssetIds(pageIndex, pageSize, clientIp, assetId, status, assetIds)
-
-	if err != nil {
-		return err
-	}
-
-	for i := 0; i < len(items); i++ {
-		if status == constant.Disconnected && len(items[i].Recording) > 0 {
-
-			var recording string
-			if items[i].Mode == constant.Naive || items[i].Mode == constant.Terminal {
-				recording = items[i].Recording
-			} else {
-				recording = items[i].Recording + "/recording"
-			}
-
-			if utils.FileExists(recording) {
-				items[i].Recording = "1"
-			} else {
-				items[i].Recording = "0"
-			}
-		} else {
-			items[i].Recording = "0"
-		}
-	}
-
-	return Success(c, H{
-		"total": total,
-		"items": items,
-	})
-}
-
-func SessionDeleteEndpoint(c echo.Context) error {
+func (api SessionApi) SessionDeleteEndpoint(c echo.Context) error {
 	sessionIds := strings.Split(c.Param("id"), ",")
-	err := sessionRepository.DeleteByIds(sessionIds)
+	err := service.SessionService.DeleteByIds(context.TODO(), sessionIds)
 	if err != nil {
 		return err
 	}
@@ -133,151 +80,76 @@ func SessionDeleteEndpoint(c echo.Context) error {
 	return Success(c, nil)
 }
 
-func SessionClearEndpoint(c echo.Context) error {
-	err := sessionService.ClearOfflineSession()
+func (api SessionApi) SessionClearEndpoint(c echo.Context) error {
+	err := service.SessionService.ClearOfflineSession()
 	if err != nil {
 		return err
 	}
 	return Success(c, nil)
 }
 
-func SessionReviewedEndpoint(c echo.Context) error {
+func (api SessionApi) SessionReviewedEndpoint(c echo.Context) error {
 	sessionIds := strings.Split(c.Param("id"), ",")
-	if err := sessionRepository.UpdateReadByIds(true, sessionIds); err != nil {
+	if err := repository.SessionRepository.UpdateReadByIds(context.TODO(), true, sessionIds); err != nil {
 		return err
 	}
 	return Success(c, nil)
 }
 
-func SessionUnViewedEndpoint(c echo.Context) error {
+func (api SessionApi) SessionUnViewedEndpoint(c echo.Context) error {
 	sessionIds := strings.Split(c.Param("id"), ",")
-	if err := sessionRepository.UpdateReadByIds(false, sessionIds); err != nil {
+	if err := repository.SessionRepository.UpdateReadByIds(context.TODO(), false, sessionIds); err != nil {
 		return err
 	}
 	return Success(c, nil)
 }
 
-func SessionReviewedAllEndpoint(c echo.Context) error {
-	if err := sessionService.ReviewedAll(); err != nil {
+func (api SessionApi) SessionReviewedAllEndpoint(c echo.Context) error {
+	if err := service.SessionService.ReviewedAll(); err != nil {
 		return err
 	}
 	return Success(c, nil)
 }
 
-func SessionConnectEndpoint(c echo.Context) error {
+func (api SessionApi) SessionConnectEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
 
 	s := model.Session{}
 	s.ID = sessionId
-	s.Status = constant.Connected
-	s.ConnectedTime = utils.NowJsonTime()
+	s.Status = nt.Connected
+	s.ConnectedTime = common.NowJsonTime()
 
-	if err := sessionRepository.UpdateById(&s, sessionId); err != nil {
+	if err := repository.SessionRepository.UpdateById(context.TODO(), &s, sessionId); err != nil {
 		return err
 	}
 
-	o, err := sessionRepository.FindById(sessionId)
+	o, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
-	asset, err := assetRepository.FindById(o.AssetId)
+	asset, err := repository.AssetRepository.FindById(context.TODO(), o.AssetId)
 	if err != nil {
 		return err
 	}
 	if !asset.Active {
 		asset.Active = true
-		_ = assetRepository.UpdateById(&asset, asset.ID)
+		_ = repository.AssetRepository.UpdateById(context.TODO(), &asset, asset.ID)
 	}
 
 	return Success(c, nil)
 }
 
-func SessionDisconnectEndpoint(c echo.Context) error {
+func (api SessionApi) SessionDisconnectEndpoint(c echo.Context) error {
 	sessionIds := c.Param("id")
 
 	split := strings.Split(sessionIds, ",")
 	for i := range split {
-		CloseSessionById(split[i], ForcedDisconnect, "管理员强制关闭了此会话")
+		service.SessionService.CloseSessionById(split[i], ForcedDisconnect, "管理员强制关闭了此会话")
 	}
 	return Success(c, nil)
 }
 
-var mutex sync.Mutex
-
-func CloseSessionById(sessionId string, code int, reason string) {
-	mutex.Lock()
-	defer mutex.Unlock()
-	nextSession := session.GlobalSessionManager.GetById(sessionId)
-	if nextSession != nil {
-		log.Debugf("[%v] 会话关闭，原因：%v", sessionId, reason)
-		WriteCloseMessage(nextSession.WebSocket, nextSession.Mode, code, reason)
-
-		if nextSession.Observer != nil {
-			obs := nextSession.Observer.All()
-			for _, ob := range obs {
-				WriteCloseMessage(ob.WebSocket, ob.Mode, code, reason)
-				log.Debugf("[%v] 强制踢出会话的观察者: %v", sessionId, ob.ID)
-			}
-		}
-	}
-	session.GlobalSessionManager.Del <- sessionId
-
-	DisDBSess(sessionId, code, reason)
-}
-
-func WriteCloseMessage(ws *websocket.Conn, mode string, code int, reason string) {
-	switch mode {
-	case constant.Guacd:
-		if ws != nil {
-			err := guacd.NewInstruction("error", "", strconv.Itoa(code))
-			_ = ws.WriteMessage(websocket.TextMessage, []byte(err.String()))
-			disconnect := guacd.NewInstruction("disconnect")
-			_ = ws.WriteMessage(websocket.TextMessage, []byte(disconnect.String()))
-		}
-	case constant.Naive:
-		if ws != nil {
-			msg := `0` + reason
-			_ = ws.WriteMessage(websocket.TextMessage, []byte(msg))
-		}
-	case constant.Terminal:
-		// 这里是关闭观察者的ssh会话
-		if ws != nil {
-			msg := `0` + reason
-			_ = ws.WriteMessage(websocket.TextMessage, []byte(msg))
-		}
-	}
-}
-
-func DisDBSess(sessionId string, code int, reason string) {
-	s, err := sessionRepository.FindById(sessionId)
-	if err != nil {
-		return
-	}
-
-	if s.Status == constant.Disconnected {
-		return
-	}
-
-	if s.Status == constant.Connecting {
-		// 会话还未建立成功，无需保留数据
-		_ = sessionRepository.DeleteById(sessionId)
-		return
-	}
-
-	ss := model.Session{}
-	ss.ID = sessionId
-	ss.Status = constant.Disconnected
-	ss.DisconnectedTime = utils.NowJsonTime()
-	ss.Code = code
-	ss.Message = reason
-	ss.Password = "-"
-	ss.PrivateKey = "-"
-	ss.Passphrase = "-"
-
-	_ = sessionRepository.UpdateById(&ss, sessionId)
-}
-
-func SessionResizeEndpoint(c echo.Context) error {
+func (api SessionApi) SessionResizeEndpoint(c echo.Context) error {
 	width := c.QueryParam("width")
 	height := c.QueryParam("height")
 	sessionId := c.Param("id")
@@ -289,121 +161,26 @@ func SessionResizeEndpoint(c echo.Context) error {
 	intWidth, _ := strconv.Atoi(width)
 	intHeight, _ := strconv.Atoi(height)
 
-	if err := sessionRepository.UpdateWindowSizeById(intWidth, intHeight, sessionId); err != nil {
+	if err := repository.SessionRepository.UpdateWindowSizeById(context.TODO(), intWidth, intHeight, sessionId); err != nil {
 		return err
 	}
 	return Success(c, "")
 }
 
-func SessionCreateEndpoint(c echo.Context) error {
+func (api SessionApi) SessionCreateEndpoint(c echo.Context) error {
 	assetId := c.QueryParam("assetId")
 	mode := c.QueryParam("mode")
 
-	if mode == constant.Naive {
-		mode = constant.Naive
+	if mode == nt.Native {
+		mode = nt.Native
 	} else {
-		mode = constant.Guacd
+		mode = nt.Guacd
 	}
 
 	user, _ := GetCurrentAccount(c)
 
-	asset, err := assetRepository.FindById(assetId)
+	s, err := service.SessionService.Create(c.RealIP(), assetId, mode, user)
 	if err != nil {
-		return err
-	}
-
-	var (
-		upload     = "1"
-		download   = "1"
-		_delete    = "1"
-		rename     = "1"
-		edit       = "1"
-		fileSystem = "1"
-	)
-	if asset.Owner != user.ID && constant.TypeUser == user.Type {
-		// 普通用户访问非自己创建的资产需要校验权限
-		resourceSharers, err := resourceSharerRepository.FindByResourceIdAndUserId(assetId, user.ID)
-		if err != nil {
-			return err
-		}
-		if len(resourceSharers) == 0 {
-			return errors.New("您没有权限访问此资产")
-		}
-		strategyId := resourceSharers[0].StrategyId
-		if strategyId != "" {
-			strategy, err := strategyRepository.FindById(strategyId)
-			if err != nil {
-				if !errors.Is(gorm.ErrRecordNotFound, err) {
-					return err
-				}
-			} else {
-				upload = strategy.Upload
-				download = strategy.Download
-				_delete = strategy.Delete
-				rename = strategy.Rename
-				edit = strategy.Edit
-			}
-		}
-	}
-
-	var storageId = ""
-	if constant.RDP == asset.Protocol {
-		attr, err := assetRepository.FindAssetAttrMapByAssetId(assetId)
-		if err != nil {
-			return err
-		}
-		if "true" == attr[guacd.EnableDrive] {
-			fileSystem = "1"
-			storageId = attr[guacd.DrivePath]
-			if storageId == "" {
-				storageId = user.ID
-			}
-		} else {
-			fileSystem = "0"
-		}
-	}
-
-	s := &model.Session{
-		ID:              utils.UUID(),
-		AssetId:         asset.ID,
-		Username:        asset.Username,
-		Password:        asset.Password,
-		PrivateKey:      asset.PrivateKey,
-		Passphrase:      asset.Passphrase,
-		Protocol:        asset.Protocol,
-		IP:              asset.IP,
-		Port:            asset.Port,
-		Status:          constant.NoConnect,
-		Creator:         user.ID,
-		ClientIP:        c.RealIP(),
-		Mode:            mode,
-		Upload:          upload,
-		Download:        download,
-		Delete:          _delete,
-		Rename:          rename,
-		Edit:            edit,
-		StorageId:       storageId,
-		AccessGatewayId: asset.AccessGatewayId,
-		Reviewed:        false,
-	}
-
-	if asset.AccountType == "credential" {
-		credential, err := credentialRepository.FindById(asset.CredentialId)
-		if err != nil {
-			return err
-		}
-
-		if credential.Type == constant.Custom {
-			s.Username = credential.Username
-			s.Password = credential.Password
-		} else {
-			s.Username = credential.Username
-			s.PrivateKey = credential.PrivateKey
-			s.Passphrase = credential.Passphrase
-		}
-	}
-
-	if err := sessionRepository.Create(s); err != nil {
 		return err
 	}
 
@@ -415,13 +192,15 @@ func SessionCreateEndpoint(c echo.Context) error {
 		"rename":     s.Rename,
 		"edit":       s.Edit,
 		"storageId":  s.StorageId,
-		"fileSystem": fileSystem,
+		"fileSystem": s.FileSystem,
+		"copy":       s.Copy,
+		"paste":      s.Paste,
 	})
 }
 
-func SessionUploadEndpoint(c echo.Context) error {
+func (api SessionApi) SessionUploadEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
@@ -442,6 +221,10 @@ func SessionUploadEndpoint(c echo.Context) error {
 
 	remoteDir := c.QueryParam("dir")
 	remoteFile := path.Join(remoteDir, filename)
+
+	// 记录日志
+	account, _ := GetCurrentAccount(c)
+	_ = service.StorageLogService.Save(context.Background(), s.AssetId, sessionId, account.ID, nt.StorageLogActionUpload, remoteFile)
 
 	if "ssh" == s.Protocol {
 		nextSession := session.GlobalSessionManager.GetById(sessionId)
@@ -468,15 +251,18 @@ func SessionUploadEndpoint(c echo.Context) error {
 		}
 		return Success(c, nil)
 	} else if "rdp" == s.Protocol {
-		return StorageUpload(c, file, s.StorageId)
+		if err := service.StorageService.StorageUpload(c, file, s.StorageId); err != nil {
+			return err
+		}
+		return Success(c, nil)
 	}
 
 	return err
 }
 
-func SessionEditEndpoint(c echo.Context) error {
+func (api SessionApi) SessionEditEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
@@ -499,38 +285,53 @@ func SessionEditEndpoint(c echo.Context) error {
 		}
 		defer dstFile.Close()
 		write := bufio.NewWriter(dstFile)
-		if _, err := write.WriteString(fileContent); err != nil {
+		// replace \r\n to \n
+		if _, err := write.WriteString(strings.Replace(fileContent, "\r\n", "\n", -1)); err != nil {
 			return err
+		}
+		// fix neoel
+		if !strings.HasSuffix(fileContent, "\n") {
+			if _, err := write.WriteString("\n"); err != nil {
+				return err
+			}
 		}
 		if err := write.Flush(); err != nil {
 			return err
 		}
 		return Success(c, nil)
 	} else if "rdp" == s.Protocol {
-		return StorageEdit(c, file, fileContent, s.StorageId)
+		if err := service.StorageService.StorageEdit(file, fileContent, s.StorageId); err != nil {
+			return err
+		}
+		return Success(c, nil)
 	}
 	return err
 }
 
-func SessionDownloadEndpoint(c echo.Context) error {
+func (api SessionApi) SessionDownloadEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
 	if s.Download != "1" {
 		return errors.New("禁止操作")
 	}
-	remoteFile := c.QueryParam("file")
+	file := c.QueryParam("file")
+
+	// 记录日志
+	account, _ := GetCurrentAccount(c)
+	_ = service.StorageLogService.Save(context.Background(), s.AssetId, sessionId, account.ID, nt.StorageLogActionDownload, file)
+
 	// 获取带后缀的文件名称
-	filenameWithSuffix := path.Base(remoteFile)
+	filenameWithSuffix := path.Base(file)
 	if "ssh" == s.Protocol {
 		nextSession := session.GlobalSessionManager.GetById(sessionId)
 		if nextSession == nil {
 			return errors.New("获取会话失败")
 		}
 
-		dstFile, err := nextSession.NextTerminal.SftpClient.Open(remoteFile)
+		dstFile, err := nextSession.NextTerminal.SftpClient.Open(file)
 		if err != nil {
 			return err
 		}
@@ -546,15 +347,15 @@ func SessionDownloadEndpoint(c echo.Context) error {
 		return c.Stream(http.StatusOK, echo.MIMEOctetStream, bytes.NewReader(buff.Bytes()))
 	} else if "rdp" == s.Protocol {
 		storageId := s.StorageId
-		return StorageDownload(c, remoteFile, storageId)
+		return service.StorageService.StorageDownload(c, file, storageId)
 	}
 
 	return err
 }
 
-func SessionLsEndpoint(c echo.Context) error {
+func (api SessionApi) SessionLsEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindByIdAndDecrypt(sessionId)
+	s, err := service.SessionService.FindByIdAndDecrypt(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
@@ -569,7 +370,6 @@ func SessionLsEndpoint(c echo.Context) error {
 		if nextSession.NextTerminal.SftpClient == nil {
 			sftpClient, err := sftp.NewClient(nextSession.NextTerminal.SshClient)
 			if err != nil {
-				log.Errorf("创建sftp客户端失败：%v", err.Error())
 				return err
 			}
 			nextSession.NextTerminal.SftpClient = sftpClient
@@ -583,18 +383,13 @@ func SessionLsEndpoint(c echo.Context) error {
 		var files = make([]service.File, 0)
 		for i := range fileInfos {
 
-			// 忽略隐藏文件
-			if strings.HasPrefix(fileInfos[i].Name(), ".") {
-				continue
-			}
-
 			file := service.File{
 				Name:    fileInfos[i].Name(),
 				Path:    path.Join(remoteDir, fileInfos[i].Name()),
 				IsDir:   fileInfos[i].IsDir(),
 				Mode:    fileInfos[i].Mode().String(),
 				IsLink:  fileInfos[i].Mode()&os.ModeSymlink == os.ModeSymlink,
-				ModTime: utils.NewJsonTime(fileInfos[i].ModTime()),
+				ModTime: common.NewJsonTime(fileInfos[i].ModTime()),
 				Size:    fileInfos[i].Size(),
 			}
 
@@ -604,15 +399,19 @@ func SessionLsEndpoint(c echo.Context) error {
 		return Success(c, files)
 	} else if "rdp" == s.Protocol {
 		storageId := s.StorageId
-		return StorageLs(c, remoteDir, storageId)
+		err, files := service.StorageService.StorageLs(remoteDir, storageId)
+		if err != nil {
+			return err
+		}
+		return Success(c, files)
 	}
 
 	return errors.New("当前协议不支持此操作")
 }
 
-func SessionMkDirEndpoint(c echo.Context) error {
+func (api SessionApi) SessionMkDirEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
@@ -620,6 +419,11 @@ func SessionMkDirEndpoint(c echo.Context) error {
 		return errors.New("禁止操作")
 	}
 	remoteDir := c.QueryParam("dir")
+
+	// 记录日志
+	account, _ := GetCurrentAccount(c)
+	_ = service.StorageLogService.Save(context.Background(), s.AssetId, sessionId, account.ID, nt.StorageLogActionMkdir, remoteDir)
+
 	if "ssh" == s.Protocol {
 		nextSession := session.GlobalSessionManager.GetById(sessionId)
 		if nextSession == nil {
@@ -630,14 +434,18 @@ func SessionMkDirEndpoint(c echo.Context) error {
 		}
 		return Success(c, nil)
 	} else if "rdp" == s.Protocol {
-		return StorageMkDir(c, remoteDir, s.StorageId)
+		storageId := s.StorageId
+		if err := service.StorageService.StorageMkDir(remoteDir, storageId); err != nil {
+			return err
+		}
+		return Success(c, nil)
 	}
 	return errors.New("当前协议不支持此操作")
 }
 
-func SessionRmEndpoint(c echo.Context) error {
+func (api SessionApi) SessionRmEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
@@ -646,6 +454,11 @@ func SessionRmEndpoint(c echo.Context) error {
 	}
 	// 文件夹或者文件
 	file := c.FormValue("file")
+
+	// 记录日志
+	account, _ := GetCurrentAccount(c)
+	_ = service.StorageLogService.Save(context.Background(), s.AssetId, sessionId, account.ID, nt.StorageLogActionRm, file)
+
 	if "ssh" == s.Protocol {
 		nextSession := session.GlobalSessionManager.GetById(sessionId)
 		if nextSession == nil {
@@ -682,15 +495,19 @@ func SessionRmEndpoint(c echo.Context) error {
 
 		return Success(c, nil)
 	} else if "rdp" == s.Protocol {
-		return StorageRm(c, file, s.StorageId)
+		storageId := s.StorageId
+		if err := service.StorageService.StorageRm(file, storageId); err != nil {
+			return err
+		}
+		return Success(c, nil)
 	}
 
 	return errors.New("当前协议不支持此操作")
 }
 
-func SessionRenameEndpoint(c echo.Context) error {
+func (api SessionApi) SessionRenameEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
@@ -699,6 +516,11 @@ func SessionRenameEndpoint(c echo.Context) error {
 	}
 	oldName := c.QueryParam("oldName")
 	newName := c.QueryParam("newName")
+
+	// 记录日志
+	account, _ := GetCurrentAccount(c)
+	_ = service.StorageLogService.Save(context.Background(), s.AssetId, sessionId, account.ID, nt.StorageLogActionRename, oldName)
+
 	if "ssh" == s.Protocol {
 		nextSession := session.GlobalSessionManager.GetById(sessionId)
 		if nextSession == nil {
@@ -713,42 +535,46 @@ func SessionRenameEndpoint(c echo.Context) error {
 
 		return Success(c, nil)
 	} else if "rdp" == s.Protocol {
-		return StorageRename(c, oldName, newName, s.StorageId)
+		storageId := s.StorageId
+		if err := service.StorageService.StorageRename(oldName, newName, storageId); err != nil {
+			return err
+		}
+		return Success(c, nil)
 	}
 	return errors.New("当前协议不支持此操作")
 }
 
-func SessionRecordingEndpoint(c echo.Context) error {
+func (api SessionApi) SessionRecordingEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
 
 	var recording string
-	if s.Mode == constant.Naive || s.Mode == constant.Terminal {
+	if s.Mode == nt.Native || s.Mode == nt.Terminal {
 		recording = s.Recording
 	} else {
 		recording = s.Recording + "/recording"
 	}
-	_ = sessionRepository.UpdateReadByIds(true, []string{sessionId})
+	_ = repository.SessionRepository.UpdateReadByIds(context.TODO(), true, []string{sessionId})
 
-	log.Debugf("读取录屏文件：%v,是否存在: %v, 是否为文件: %v", recording, utils.FileExists(recording), utils.IsFile(recording))
-	return c.File(recording)
+	http.ServeFile(c.Response(), c.Request(), recording)
+	return nil
 }
 
-func SessionGetEndpoint(c echo.Context) error {
+func (api SessionApi) SessionGetEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindById(sessionId)
+	s, err := repository.SessionRepository.FindById(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
 	return Success(c, s)
 }
 
-func SessionStatsEndpoint(c echo.Context) error {
+func (api SessionApi) SessionStatsEndpoint(c echo.Context) error {
 	sessionId := c.Param("id")
-	s, err := sessionRepository.FindByIdAndDecrypt(sessionId)
+	s, err := service.SessionService.FindByIdAndDecrypt(context.TODO(), sessionId)
 	if err != nil {
 		return err
 	}
@@ -761,8 +587,8 @@ func SessionStatsEndpoint(c echo.Context) error {
 	if nextSession == nil {
 		return errors.New("获取会话失败")
 	}
-	sshClient := nextSession.NextTerminal.SshClient
-	stats, err := GetAllStats(sshClient)
+
+	stats, err := GetAllStats(nextSession)
 	if err != nil {
 		return err
 	}

@@ -90,6 +90,7 @@ func SetupConfig() (*Config, error) {
 	pflag.String("server.addr", "", "server listen addr")
 	pflag.String("server.cert", "", "tls cert file")
 	pflag.String("server.key", "", "tls key file")
+	pflag.String("reset-totp", "", "")
 	pflag.String("reset-password", "", "")
 	pflag.String("encryption-key", "", "")
 	pflag.String("new-encryption-key", "", "")
@@ -107,9 +108,7 @@ func SetupConfig() (*Config, error) {
 	if err := viper.BindPFlags(pflag.CommandLine); err != nil {
 		return nil, err
 	}
-	if err := viper.ReadInConfig(); err != nil {
-		return nil, err
-	}
+	_ = viper.ReadInConfig()
 
 	sshdKey, err := homedir.Expand(viper.GetString("sshd.key"))
 	if err != nil {

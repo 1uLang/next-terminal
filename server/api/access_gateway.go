@@ -1,45 +1,56 @@
 package api
 
 import (
+	"context"
+	"next-terminal/server/common"
+	"next-terminal/server/common/maps"
 	"strconv"
 	"strings"
 
+	"next-terminal/server/global/gateway"
 	"next-terminal/server/model"
+	"next-terminal/server/repository"
+	"next-terminal/server/service"
 	"next-terminal/server/utils"
 
 	"github.com/labstack/echo/v4"
 )
 
-func AccessGatewayCreateEndpoint(c echo.Context) error {
+type AccessGatewayApi struct{}
+
+func (api AccessGatewayApi) AccessGatewayCreateEndpoint(c echo.Context) error {
 	var item model.AccessGateway
 	if err := c.Bind(&item); err != nil {
 		return err
 	}
 
 	item.ID = utils.UUID()
-	item.Created = utils.NowJsonTime()
+	item.Created = common.NowJsonTime()
 
-	if err := accessGatewayRepository.Create(&item); err != nil {
+	if err := repository.GatewayRepository.Create(context.TODO(), &item); err != nil {
 		return err
 	}
 	// 连接网关
-	go accessGatewayService.ReConnect(&item)
-	return Success(c, item.ID)
+	service.GatewayService.ReLoad(&item)
+	return Success(c, "")
 }
 
-func AccessGatewayAllEndpoint(c echo.Context) error {
-	gateways, err := accessGatewayRepository.FindAll()
+func (api AccessGatewayApi) AccessGatewayAllEndpoint(c echo.Context) error {
+	gateways, err := repository.GatewayRepository.FindAll(context.TODO())
 	if err != nil {
 		return err
 	}
-	var simpleGateways = make([]model.AccessGatewayForPage, 0)
-	for i := 0; i < len(gateways); i++ {
-		simpleGateways = append(simpleGateways, model.AccessGatewayForPage{ID: gateways[i].ID, Name: gateways[i].Name})
+	items := make([]maps.Map, len(gateways))
+	for i, e := range gateways {
+		items[i] = maps.Map{
+			"id":   e.ID,
+			"name": e.Name,
+		}
 	}
-	return Success(c, simpleGateways)
+	return Success(c, items)
 }
 
-func AccessGatewayPagingEndpoint(c echo.Context) error {
+func (api AccessGatewayApi) AccessGatewayPagingEndpoint(c echo.Context) error {
 	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
 	ip := c.QueryParam("ip")
@@ -48,53 +59,25 @@ func AccessGatewayPagingEndpoint(c echo.Context) error {
 	order := c.QueryParam("order")
 	field := c.QueryParam("field")
 
-	items, total, err := accessGatewayRepository.Find(pageIndex, pageSize, ip, name, order, field)
+	items, total, err := repository.GatewayRepository.Find(context.TODO(), pageIndex, pageSize, ip, name, order, field)
 	if err != nil {
 		return err
 	}
 	for i := 0; i < len(items); i++ {
-		g, err := accessGatewayService.GetGatewayById(items[i].ID)
-		if err != nil {
-			return err
+		g := gateway.GlobalGatewayManager.GetById(items[i].ID)
+		if g != nil {
+			items[i].Connected = g.Connected
+			items[i].Message = g.Message
 		}
-		items[i].Connected = g.Connected
-		items[i].Message = g.Message
 	}
 
-	return Success(c, H{
-		"total": total,
-		"items": items,
-	})
-}
-func AccessGatewayListEndpoint(c echo.Context) error {
-	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
-	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
-	ip := c.QueryParam("ip")
-	name := c.QueryParam("name")
-	ids := strings.Split(c.QueryParam("ids"), ",")
-	order := c.QueryParam("order")
-	field := c.QueryParam("field")
-
-	items, total, err := accessGatewayRepository.List(pageIndex, pageSize, ip, name, ids, order, field)
-	if err != nil {
-		return err
-	}
-	for i := 0; i < len(items); i++ {
-		g, err := accessGatewayService.GetGatewayById(items[i].ID)
-		if err != nil {
-			return err
-		}
-		items[i].Connected = g.Connected
-		items[i].Message = g.Message
-	}
-
-	return Success(c, H{
+	return Success(c, maps.Map{
 		"total": total,
 		"items": items,
 	})
 }
 
-func AccessGatewayUpdateEndpoint(c echo.Context) error {
+func (api AccessGatewayApi) AccessGatewayUpdateEndpoint(c echo.Context) error {
 	id := c.Param("id")
 
 	var item model.AccessGateway
@@ -102,44 +85,33 @@ func AccessGatewayUpdateEndpoint(c echo.Context) error {
 		return err
 	}
 
-	if err := accessGatewayRepository.UpdateById(&item, id); err != nil {
+	if err := repository.GatewayRepository.UpdateById(context.TODO(), &item, id); err != nil {
 		return err
 	}
-	go accessGatewayService.ReConnect(&item)
+	service.GatewayService.ReLoad(&item)
 	return Success(c, nil)
 }
 
-func AccessGatewayDeleteEndpoint(c echo.Context) error {
+func (api AccessGatewayApi) AccessGatewayDeleteEndpoint(c echo.Context) error {
 	ids := c.Param("id")
 	split := strings.Split(ids, ",")
 	for i := range split {
 		id := split[i]
-		if err := accessGatewayRepository.DeleteById(id); err != nil {
+		if err := repository.GatewayRepository.DeleteById(context.TODO(), id); err != nil {
 			return err
 		}
-		accessGatewayService.DisconnectById(id)
+		service.GatewayService.DisconnectById(id)
 	}
 	return Success(c, nil)
 }
 
-func AccessGatewayGetEndpoint(c echo.Context) error {
+func (api AccessGatewayApi) AccessGatewayGetEndpoint(c echo.Context) error {
 	id := c.Param("id")
 
-	item, err := accessGatewayRepository.FindById(id)
+	item, err := repository.GatewayRepository.FindById(context.TODO(), id)
 	if err != nil {
 		return err
 	}
 
 	return Success(c, item)
-}
-
-func AccessGatewayReconnectEndpoint(c echo.Context) error {
-	id := c.Param("id")
-
-	item, err := accessGatewayRepository.FindById(id)
-	if err != nil {
-		return err
-	}
-	accessGatewayService.ReConnect(&item)
-	return Success(c, "")
 }

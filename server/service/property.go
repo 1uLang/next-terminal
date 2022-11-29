@@ -1,180 +1,119 @@
 package service
 
 import (
-	"next-terminal/server/guacd"
+	"context"
+	"errors"
+	"fmt"
+
+	"next-terminal/server/common/guacamole"
+	"next-terminal/server/env"
 	"next-terminal/server/model"
 	"next-terminal/server/repository"
+
+	"gorm.io/gorm"
 )
 
-type PropertyService struct {
-	propertyRepository *repository.PropertyRepository
+var PropertyService = new(propertyService)
+
+type propertyService struct {
+	baseService
 }
 
-func NewPropertyService(propertyRepository *repository.PropertyRepository) *PropertyService {
-	return &PropertyService{propertyRepository: propertyRepository}
+var deprecatedPropertyNames = []string{
+	guacamole.EnableDrive,
+	guacamole.DrivePath,
+	guacamole.DriveName,
+	guacamole.DisableGlyphCaching,
+	guacamole.CreateRecordingPath,
 }
 
-func (r PropertyService) InitProperties() error {
-	propertyMap := r.propertyRepository.FindAllMap()
+var defaultProperties = map[string]string{
+	guacamole.EnableRecording:          "true",
+	guacamole.FontName:                 "menlo",
+	guacamole.FontSize:                 "12",
+	guacamole.ColorScheme:              "gray-black",
+	guacamole.EnableWallpaper:          "true",
+	guacamole.EnableTheming:            "true",
+	guacamole.EnableFontSmoothing:      "true",
+	guacamole.EnableFullWindowDrag:     "true",
+	guacamole.EnableDesktopComposition: "true",
+	guacamole.EnableMenuAnimations:     "true",
+	guacamole.DisableBitmapCaching:     "false",
+	guacamole.DisableOffscreenCaching:  "false",
+	"cron-log-saved-limit":             "360",
+	"login-log-saved-limit":            "360",
+	"session-saved-limit":              "360",
+	"user-default-storage-size":        "5120",
+}
 
-	if len(propertyMap[guacd.EnableRecording]) == 0 {
-		property := model.Property{
-			Name:  guacd.EnableRecording,
-			Value: "true",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
+func (service propertyService) InitProperties() error {
+	propertyMap := repository.PropertyRepository.FindAllMap(context.TODO())
+
+	for name, value := range defaultProperties {
+		if err := service.CreateIfAbsent(propertyMap, name, value); err != nil {
 			return err
 		}
 	}
 
-	if len(propertyMap[guacd.CreateRecordingPath]) == 0 {
-		property := model.Property{
-			Name:  guacd.CreateRecordingPath,
-			Value: "true",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
+	return nil
+}
 
-	if len(propertyMap[guacd.FontName]) == 0 {
+func (service propertyService) CreateIfAbsent(propertyMap map[string]string, name, value string) error {
+	if len(propertyMap[name]) == 0 {
 		property := model.Property{
-			Name:  guacd.FontName,
-			Value: "menlo",
+			Name:  name,
+			Value: value,
 		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
+		return repository.PropertyRepository.Create(context.TODO(), &property)
 	}
+	return nil
+}
 
-	if len(propertyMap[guacd.FontSize]) == 0 {
-		property := model.Property{
-			Name:  guacd.FontSize,
-			Value: "12",
+func (service propertyService) DeleteDeprecatedProperty() error {
+	propertyMap := repository.PropertyRepository.FindAllMap(context.TODO())
+	for _, name := range deprecatedPropertyNames {
+		if propertyMap[name] == "" {
+			continue
 		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.ColorScheme]) == 0 {
-		property := model.Property{
-			Name:  guacd.ColorScheme,
-			Value: "gray-black",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.EnableWallpaper]) == 0 {
-		property := model.Property{
-			Name:  guacd.EnableWallpaper,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.EnableTheming]) == 0 {
-		property := model.Property{
-			Name:  guacd.EnableTheming,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.EnableFontSmoothing]) == 0 {
-		property := model.Property{
-			Name:  guacd.EnableFontSmoothing,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.EnableFullWindowDrag]) == 0 {
-		property := model.Property{
-			Name:  guacd.EnableFullWindowDrag,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.EnableDesktopComposition]) == 0 {
-		property := model.Property{
-			Name:  guacd.EnableDesktopComposition,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.EnableMenuAnimations]) == 0 {
-		property := model.Property{
-			Name:  guacd.EnableMenuAnimations,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.DisableBitmapCaching]) == 0 {
-		property := model.Property{
-			Name:  guacd.DisableBitmapCaching,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.DisableOffscreenCaching]) == 0 {
-		property := model.Property{
-			Name:  guacd.DisableOffscreenCaching,
-			Value: "false",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
-			return err
-		}
-	}
-
-	if len(propertyMap[guacd.DisableGlyphCaching]) == 0 {
-		property := model.Property{
-			Name:  guacd.DisableGlyphCaching,
-			Value: "true",
-		}
-		if err := r.propertyRepository.Create(&property); err != nil {
+		if err := repository.PropertyRepository.DeleteByName(context.TODO(), name); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (r PropertyService) DeleteDeprecatedProperty() error {
-	propertyMap := r.propertyRepository.FindAllMap()
-	if propertyMap[guacd.EnableDrive] != "" {
-		if err := r.propertyRepository.DeleteByName(guacd.DriveName); err != nil {
-			return err
+func (service propertyService) Update(item map[string]interface{}) error {
+	return env.GetDB().Transaction(func(tx *gorm.DB) error {
+		c := service.Context(tx)
+		for key := range item {
+			value := fmt.Sprintf("%v", item[key])
+			if value == "" {
+				value = "-"
+			}
+
+			property := model.Property{
+				Name:  key,
+				Value: value,
+			}
+
+			if key == "enable-ldap" && value == "false" {
+				if err := UserService.DeleteALlLdapUser(c); err != nil {
+					return err
+				}
+			}
+
+			_, err := repository.PropertyRepository.FindByName(c, key)
+			if err != nil && errors.Is(err, gorm.ErrRecordNotFound) {
+				if err := repository.PropertyRepository.Create(c, &property); err != nil {
+					return err
+				}
+			} else {
+				if err := repository.PropertyRepository.UpdateByName(c, &property, key); err != nil {
+					return err
+				}
+			}
 		}
-	}
-	if propertyMap[guacd.DrivePath] != "" {
-		if err := r.propertyRepository.DeleteByName(guacd.DrivePath); err != nil {
-			return err
-		}
-	}
-	if propertyMap[guacd.DriveName] != "" {
-		if err := r.propertyRepository.DeleteByName(guacd.DriveName); err != nil {
-			return err
-		}
-	}
-	return nil
+		return nil
+	})
+
 }

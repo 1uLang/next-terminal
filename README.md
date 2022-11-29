@@ -1,15 +1,11 @@
 # Next Terminal
 
-**说明：最新版前后端代码已经全部开源，1.2.x 及之后版本已去除授权限制。**
-
 [![Docker guacd build](https://github.com/dushixiang/next-terminal/actions/workflows/docker-guacd.yml/badge.svg)](https://github.com/dushixiang/next-terminal/actions/workflows/docker-guacd.yml)
 [![Docker next-terminal build](https://github.com/dushixiang/next-terminal/actions/workflows/docker-next-terminal.yml/badge.svg)](https://github.com/dushixiang/next-terminal/actions/workflows/docker-next-terminal.yml)
 
 ## 快速了解
 
-Next Terminal是使用Golang和React开发的一款HTML5的远程桌面网关，具有小巧、易安装、易使用、资源占用小的特点，支持RDP、SSH、VNC和Telnet协议的连接和管理。
-
-Next Terminal基于 [Apache Guacamole](https://guacamole.apache.org/) 开发，使用到了guacd服务。
+Next Terminal是一个简单好用安全的开源交互审计系统，支持RDP、SSH、VNC、Telnet、Kubernetes协议。
 
 目前支持的功能有：
 
@@ -25,12 +21,20 @@ Next Terminal基于 [Apache Guacamole](https://guacamole.apache.org/) 开发，�
 - 多用户&用户分组
 - 计划任务
 - ssh server
+- 登录策略
+- 系统监控
 
 ## 在线体验
 
-https://next.typesafe.cn/
+**web**
 
-test/test
+https://next.typesafe.cn/ 账号：test  密码：test
+
+**ssh server**
+
+主机：next.typesafe.cn
+端口：2022
+账号：test  密码：test
 
 ## 协议与条款
 
@@ -40,21 +44,30 @@ test/test
 
 - [安装文档](https://next-terminal.typesafe.cn)
 
-默认账号密码为 admin/admin
+默认账号密码为 admin/admin 。
+
+## 手动编译
+
+1. 找一台Linux 机器或者Mac
+2. 安装 go 1.18 或以上版本
+3. 安装 nodejs 16，安装 npm 或 yarn
+4. 进入 web 目录 执行 yarn 或 npm install
+5. 返回上级目录，也就是项目根目录，执行 sh build.sh
 
 ## 问题反馈
 
-请提 Issues
+- Issues
+- 微信群 加我微信拉你进群 (请备注 next-terminal)
+
+<img src="wx.png" width="300"  height="auto"/>
+
+- QQ群 938145268
+- Telegram https://t.me/next_terminal
+
+## 安全问题
+
+如果您在使用过程中发现了安全问题，请发送邮件至 helloworld1024@foxmail.com 联系我，谢谢。
 
 ## License 
 
-Next Terminal 使用 [AGPL-3.0](./LICENSE) 开源协议，请自觉准守。
-
-## 赞助支持
-
-如果你觉得 `next-terminal` 这款程序还不错，并且想要购买服务器，可以从这里点击购买腾讯云服务器。
-
-- 2核4G 8M带宽 80G磁盘 1200GB流量/月    70元/1年
-- 2核4G 8M带宽 80G磁盘 1200GB流量/月    198元/3年
-
-更多优惠购买链接: https://curl.qcloud.com/bvzoD87S
+Next Terminal 使用 [AGPL-3.0](./LICENSE) 开源协议，请自觉遵守。

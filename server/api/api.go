@@ -1,24 +1,23 @@
 package api
 
 import (
-	"next-terminal/server/constant"
+	"github.com/labstack/echo/v4"
+	"next-terminal/server/common/maps"
+	"next-terminal/server/common/nt"
+	"next-terminal/server/dto"
 	"next-terminal/server/global/cache"
 	"next-terminal/server/model"
-
-	"github.com/labstack/echo/v4"
 )
 
-type H map[string]interface{}
-
 func Fail(c echo.Context, code int, message string) error {
-	return c.JSON(200, H{
+	return c.JSON(200, maps.Map{
 		"code":    code,
 		"message": message,
 	})
 }
 
 func FailWithData(c echo.Context, code int, message string, data interface{}) error {
-	return c.JSON(200, H{
+	return c.JSON(200, maps.Map{
 		"code":    code,
 		"message": message,
 		"data":    data,
@@ -26,63 +25,26 @@ func FailWithData(c echo.Context, code int, message string, data interface{}) er
 }
 
 func Success(c echo.Context, data interface{}) error {
-	return c.JSON(200, H{
+	return c.JSON(200, maps.Map{
 		"code":    1,
 		"message": "success",
 		"data":    data,
 	})
 }
 
-func NotFound(c echo.Context, message string) error {
-	return c.JSON(200, H{
-		"code":    -1,
-		"message": message,
-	})
-}
-
-func checkToken(token string) bool {
-
-	cacheKey := userService.BuildCacheKeyByToken(token)
-	_, found := cache.GlobalCache.Get(cacheKey)
-	return !found
-}
 func GetToken(c echo.Context) string {
-	token := c.Request().Header.Get(constant.Token)
-	atoken := c.Request().Header.Get(constant.AToken)
-
-	if token == "" || token == "null" || checkToken(token) {
-		token = atoken
-		c.Request().Header.Set(constant.Token, atoken)
-	}
+	token := c.Request().Header.Get(nt.Token)
 	if len(token) > 0 {
 		return token
 	}
-	return c.QueryParam(constant.Token)
+	return c.QueryParam(nt.Token)
 }
 
-func GetCurrentAccount(c echo.Context) (model.User, bool) {
+func GetCurrentAccount(c echo.Context) (*model.User, bool) {
 	token := GetToken(c)
-	cacheKey := userService.BuildCacheKeyByToken(token)
-	get, b := cache.GlobalCache.Get(cacheKey)
+	get, b := cache.TokenManager.Get(token)
 	if b {
-		return get.(Authorization).User, true
+		return get.(dto.Authorization).User, true
 	}
-	return model.User{}, false
-}
-
-func HasPermission(c echo.Context, owner string) bool {
-	// 检测是否登录
-	account, found := GetCurrentAccount(c)
-	if !found {
-		return false
-	}
-	// 检测是否为管理人员
-	if constant.TypeAdmin == account.Type {
-		return true
-	}
-	// 检测是否为所有者
-	if owner == account.ID {
-		return true
-	}
-	return false
+	return nil, false
 }

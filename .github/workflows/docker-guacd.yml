@@ -35,6 +35,8 @@ jobs:
           push: true
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/guacd:1.4.0
+            ${{ secrets.DOCKERHUB_USERNAME }}/guacd:latest
             registry.cn-beijing.aliyuncs.com/${{ secrets.DOCKERHUB_USERNAME }}/guacd:1.4.0
+            registry.cn-beijing.aliyuncs.com/${{ secrets.DOCKERHUB_USERNAME }}/guacd:latest
           cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/guacd:cache
           cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/guacd:cache,mode=max

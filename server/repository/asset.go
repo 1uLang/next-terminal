@@ -1,107 +1,52 @@
 package repository
 
 import (
-	"encoding/base64"
+	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
+	"next-terminal/server/common"
+	"next-terminal/server/common/maps"
+	"next-terminal/server/common/nt"
 	"next-terminal/server/config"
-	"next-terminal/server/constant"
 	"next-terminal/server/model"
 	"next-terminal/server/utils"
-
-	"github.com/labstack/echo/v4"
-	"gorm.io/gorm"
 )
 
-type AssetRepository struct {
-	DB *gorm.DB
+var AssetRepository = new(assetRepository)
+
+type assetRepository struct {
+	baseRepository
 }
 
-func NewAssetRepository(db *gorm.DB) *AssetRepository {
-	assetRepository = &AssetRepository{DB: db}
-	return assetRepository
-}
-
-func (r AssetRepository) FindAll() (o []model.Asset, err error) {
-	err = r.DB.Find(&o).Error
+func (r assetRepository) FindAll(c context.Context) (o []model.Asset, err error) {
+	err = r.GetDB(c).Find(&o).Error
 	return
 }
 
-func (r AssetRepository) FindByIds(assetIds []string) (o []model.Asset, err error) {
-	err = r.DB.Where("id in ?", assetIds).Find(&o).Error
+func (r assetRepository) FindByIds(c context.Context, assetIds []string) (o []model.Asset, err error) {
+	err = r.GetDB(c).Where("id in ?", assetIds).Find(&o).Error
 	return
 }
 
-func (r AssetRepository) FindByProtocol(protocol string) (o []model.Asset, err error) {
-	err = r.DB.Where("protocol = ?", protocol).Find(&o).Error
-	return
-}
-
-func (r AssetRepository) FindByProtocolAndIds(protocol string, assetIds []string) (o []model.Asset, err error) {
-	err = r.DB.Where("protocol = ? and id in ?", protocol, assetIds).Find(&o).Error
-	return
-}
-
-func (r AssetRepository) FindByProtocolAndUser(protocol string, account model.User) (o []model.Asset, err error) {
-	db := r.DB.Table("assets").Select("assets.id,assets.name,assets.ip,assets.port,assets.protocol,assets.active,assets.owner,assets.created,assets.tags,assets.description, users.nickname as owner_name").Joins("left join users on assets.owner = users.id").Joins("left join resource_sharers on assets.id = resource_sharers.resource_id").Group("assets.id")
-
-	if constant.TypeUser == account.Type {
-		owner := account.ID
-		db = db.Where("assets.owner = ? or resource_sharers.user_id = ?", owner, owner)
-
-		// 查询用户所在用户组列表
-		userGroupIds, err := userGroupRepository.FindUserGroupIdsByUserId(account.ID)
-		if err != nil {
-			return nil, err
-		}
-
-		if len(userGroupIds) > 0 {
-			db = db.Or("resource_sharers.user_group_id in ?", userGroupIds)
-		}
+func (r assetRepository) FindByProtocol(c context.Context, protocol string) (o []model.Asset, err error) {
+	db := r.GetDB(c)
+	if protocol != "" {
+		db = db.Where("protocol = ?", protocol)
 	}
-
-	if len(protocol) > 0 {
-		db = db.Where("assets.protocol = ?", protocol)
-	}
-	err = db.Find(&o).Error
+	err = db.Order("name asc").Find(&o).Error
 	return
 }
 
-func (r AssetRepository) Find(pageIndex, pageSize int, name, protocol, tags string, account model.User, owner, sharer, userGroupId, ip, order, field string, count ...bool) (o []model.AssetForPage, total int64, err error) {
-	db := r.DB.Table("assets").Select("assets.id,assets.name,assets.ip,assets.port,assets.protocol,assets.active,assets.owner,assets.created,assets.tags,assets.description, users.nickname as owner_name").Joins("left join users on assets.owner = users.id").Joins("left join resource_sharers on assets.id = resource_sharers.resource_id").Group("assets.id")
-	dbCounter := r.DB.Table("assets").Select("DISTINCT assets.id").Joins("left join resource_sharers on assets.id = resource_sharers.resource_id").Group("assets.id")
+func (r assetRepository) FindByProtocolAndIds(c context.Context, protocol string, assetIds []string) (o []model.Asset, err error) {
+	err = r.GetDB(c).Where("protocol = ? and id in ?", protocol, assetIds).Find(&o).Error
+	return
+}
 
-	if constant.TypeUser == account.Type {
-		owner := account.ID
-		db = db.Where("assets.owner = ? or resource_sharers.user_id = ?", owner, owner)
-		dbCounter = dbCounter.Where("assets.owner = ? or resource_sharers.user_id = ?", owner, owner)
-
-		// 查询用户所在用户组列表
-		userGroupIds, err := userGroupRepository.FindUserGroupIdsByUserId(account.ID)
-		if err != nil {
-			return nil, 0, err
-		}
-
-		if len(userGroupIds) > 0 {
-			db = db.Or("resource_sharers.user_group_id in ?", userGroupIds)
-			dbCounter = dbCounter.Or("resource_sharers.user_group_id in ?", userGroupIds)
-		}
-	} else {
-		if len(owner) > 0 {
-			db = db.Where("assets.owner = ?", owner)
-			dbCounter = dbCounter.Where("assets.owner = ?", owner)
-		}
-		if len(sharer) > 0 {
-			db = db.Where("resource_sharers.user_id = ?", sharer)
-			dbCounter = dbCounter.Where("resource_sharers.user_id = ?", sharer)
-		}
-
-		if len(userGroupId) > 0 {
-			db = db.Where("resource_sharers.user_group_id = ?", userGroupId)
-			dbCounter = dbCounter.Where("resource_sharers.user_group_id = ?", userGroupId)
-		}
-	}
+func (r assetRepository) Find(c context.Context, pageIndex, pageSize int, name, protocol, tags, ip, port, active, order, field string) (o []model.AssetForPage, total int64, err error) {
+	db := r.GetDB(c).Table("assets").Select("assets.id,assets.name,assets.ip,assets.port,assets.protocol,assets.active,assets.active_message,assets.owner,assets.created,assets.last_access_time,assets.tags,assets.description, users.nickname as owner_name").Joins("left join users on assets.owner = users.id")
+	dbCounter := r.GetDB(c).Table("assets")
 
 	if len(name) > 0 {
 		db = db.Where("assets.name like ?", "%"+name+"%")
@@ -111,6 +56,244 @@ func (r AssetRepository) Find(pageIndex, pageSize int, name, protocol, tags stri
 	if len(ip) > 0 {
 		db = db.Where("assets.ip like ?", "%"+ip+"%")
 		dbCounter = dbCounter.Where("assets.ip like ?", "%"+ip+"%")
+	}
+
+	if len(port) > 0 {
+		db = db.Where("assets.port = ?", port)
+		dbCounter = dbCounter.Where("assets.port = ?", ip)
+	}
+
+	if len(protocol) > 0 {
+		db = db.Where("assets.protocol = ?", protocol)
+		dbCounter = dbCounter.Where("assets.protocol = ?", protocol)
+	}
+
+	if len(tags) > 0 {
+		tagArr := strings.Split(tags, ",")
+		for i := range tagArr {
+			if config.GlobalCfg.DB == "sqlite" {
+				db = db.Where("(',' || assets.tags || ',') LIKE ?", "%,"+tagArr[i]+",%")
+				dbCounter = dbCounter.Where("(',' || assets.tags || ',') LIKE ?", "%,"+tagArr[i]+",%")
+			} else {
+				db = db.Where("find_in_set(?, assets.tags)", tagArr[i])
+				dbCounter = dbCounter.Where("find_in_set(?, assets.tags)", tagArr[i])
+			}
+		}
+	}
+
+	if active != "" {
+		_active, err := strconv.ParseBool(active)
+		if err == nil {
+			db = db.Where("assets.active = ?", _active)
+			dbCounter = dbCounter.Where("assets.active = ?", _active)
+		}
+	}
+
+	err = dbCounter.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if order == "ascend" {
+		order = "asc"
+	} else {
+		order = "desc"
+	}
+
+	switch field {
+	case "name":
+	case "protocol":
+	case "ip":
+	case "active":
+	case "lastAccessTime":
+		field = "last_access_time"
+	default:
+		field = "created"
+	}
+
+	err = db.Order("assets." + field + " " + order).Offset((pageIndex - 1) * pageSize).Limit(pageSize).Find(&o).Error
+
+	if o == nil {
+		o = make([]model.AssetForPage, 0)
+	}
+	return
+}
+
+func (r assetRepository) Create(c context.Context, o *model.Asset) (err error) {
+	return r.GetDB(c).Create(o).Error
+}
+
+func (r assetRepository) FindById(c context.Context, id string) (o model.Asset, err error) {
+	err = r.GetDB(c).Where("id = ?", id).First(&o).Error
+	return
+}
+
+func (r assetRepository) UpdateById(c context.Context, o *model.Asset, id string) error {
+	o.ID = id
+	return r.GetDB(c).Updates(o).Error
+}
+
+func (r assetRepository) UpdateActiveById(c context.Context, active bool, message, id string) error {
+	sql := "update assets set active = ?, active_message = ?  where id = ?"
+	return r.GetDB(c).Exec(sql, active, message, id).Error
+}
+
+func (r assetRepository) DeleteById(c context.Context, assetId string) (err error) {
+	return r.GetDB(c).Where("id = ?", assetId).Delete(&model.Asset{}).Error
+}
+
+func (r assetRepository) DeleteAttrByAssetId(c context.Context, assetId string) error {
+	return r.GetDB(c).Where("asset_id = ?", assetId).Delete(&model.AssetAttribute{}).Error
+}
+
+func (r assetRepository) Count(c context.Context) (total int64, err error) {
+	err = r.GetDB(c).Find(&model.Asset{}).Count(&total).Error
+	return
+}
+
+func (r assetRepository) CountByActive(c context.Context, active bool) (total int64, err error) {
+	err = r.GetDB(c).Find(&model.Asset{}).Where("active = ?", active).Count(&total).Error
+	return
+}
+
+func (r assetRepository) CountByProtocol(c context.Context, protocol string) (total int64, err error) {
+	err = r.GetDB(c).Find(&model.Asset{}).Where("protocol = ?", protocol).Count(&total).Error
+	return
+}
+
+func (r assetRepository) FindTags(c context.Context) (o []string, err error) {
+	var assets []model.Asset
+	err = r.GetDB(c).Not("tags = '' or tags = '-' ").Find(&assets).Error
+	if err != nil {
+		return nil, err
+	}
+
+	o = make([]string, 0)
+
+	for i := range assets {
+		if len(assets[i].Tags) == 0 {
+			continue
+		}
+		split := strings.Split(assets[i].Tags, ",")
+
+		o = append(o, split...)
+	}
+
+	return utils.Distinct(o), nil
+}
+
+func (r assetRepository) UpdateAttributes(c context.Context, assetId, protocol string, m maps.Map) error {
+	var data []model.AssetAttribute
+	var parameterNames []string
+	switch protocol {
+	case "ssh":
+		parameterNames = nt.SSHParameterNames
+	case "rdp":
+		parameterNames = nt.RDPParameterNames
+	case "vnc":
+		parameterNames = nt.VNCParameterNames
+	case "telnet":
+		parameterNames = nt.TelnetParameterNames
+	case "kubernetes":
+		parameterNames = nt.KubernetesParameterNames
+	}
+
+	for i := range parameterNames {
+		name := parameterNames[i]
+		if m[name] != nil && m[name] != "" {
+			data = append(data, genAttribute(assetId, name, m))
+		}
+	}
+
+	err := r.GetDB(c).Where("asset_id = ?", assetId).Delete(&model.AssetAttribute{}).Error
+	if err != nil {
+		return err
+	}
+	return r.GetDB(c).CreateInBatches(&data, len(data)).Error
+}
+
+func genAttribute(assetId, name string, m maps.Map) model.AssetAttribute {
+	value := fmt.Sprintf("%v", m[name])
+	attribute := model.AssetAttribute{
+		Id:      utils.Sign([]string{assetId, name}),
+		AssetId: assetId,
+		Name:    name,
+		Value:   value,
+	}
+	return attribute
+}
+
+func (r assetRepository) FindAttrById(c context.Context, assetId string) (o []model.AssetAttribute, err error) {
+	err = r.GetDB(c).Where("asset_id = ?", assetId).Find(&o).Error
+	if o == nil {
+		o = make([]model.AssetAttribute, 0)
+	}
+	return o, err
+}
+
+func (r assetRepository) FindAssetAttrMapByAssetId(c context.Context, assetId string) (map[string]string, error) {
+	asset, err := r.FindById(c, assetId)
+	if err != nil {
+		return nil, err
+	}
+	attributes, err := r.FindAttrById(c, assetId)
+	if err != nil {
+		return nil, err
+	}
+
+	var parameterNames []string
+	switch asset.Protocol {
+	case "ssh":
+		parameterNames = nt.SSHParameterNames
+	case "rdp":
+		parameterNames = nt.RDPParameterNames
+	case "vnc":
+		parameterNames = nt.VNCParameterNames
+	case "telnet":
+		parameterNames = nt.TelnetParameterNames
+	case "kubernetes":
+		parameterNames = nt.KubernetesParameterNames
+	}
+	propertiesMap := PropertyRepository.FindAllMap(c)
+	var attributeMap = make(map[string]string)
+	for name := range propertiesMap {
+		if utils.Contains(parameterNames, name) {
+			attributeMap[name] = propertiesMap[name]
+		}
+	}
+
+	for i := range attributes {
+		attributeMap[attributes[i].Name] = attributes[i].Value
+	}
+	return attributeMap, nil
+}
+
+func (r assetRepository) UpdateAttrs(c context.Context, name, value, newValue string) error {
+	sql := "update asset_attributes set value = ? where name = ? and value = ?"
+	return r.GetDB(c).Exec(sql, newValue, name, value).Error
+}
+
+func (r assetRepository) ExistById(c context.Context, id string) (bool, error) {
+	m := model.Asset{}
+	var count uint64
+	err := r.GetDB(c).Table(m.TableName()).Select("count(*)").
+		Where("id = ?", id).
+		Find(&count).
+		Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (r assetRepository) FindMyAssets(c context.Context, pageIndex, pageSize int, name, protocol, tags string, assetIds []string, order, field string) (o []model.AssetForPage, total int64, err error) {
+	db := r.GetDB(c).Table("assets").Select("assets.id,assets.name,assets.protocol,assets.active,assets.active_message,assets.tags,assets.description,assets.last_access_time").
+		Where("id in ?", assetIds)
+	dbCounter := r.GetDB(c).Table("assets").Where("id in ?", assetIds)
+
+	if len(name) > 0 {
+		db = db.Where("assets.name like ?", "%"+name+"%")
+		dbCounter = dbCounter.Where("assets.name like ?", "%"+name+"%")
 	}
 
 	if len(protocol) > 0 {
@@ -142,9 +325,14 @@ func (r AssetRepository) Find(pageIndex, pageSize int, name, protocol, tags stri
 		order = "desc"
 	}
 
-	if field == "name" {
-		field = "name"
-	} else {
+	switch field {
+	case "name":
+	case "protocol":
+	case "ip":
+	case "active":
+	case "lastAccessTime":
+		field = "last_access_time"
+	default:
 		field = "created"
 	}
 
@@ -152,224 +340,14 @@ func (r AssetRepository) Find(pageIndex, pageSize int, name, protocol, tags stri
 
 	if o == nil {
 		o = make([]model.AssetForPage, 0)
-	} else {
-		for i := 0; i < len(o); i++ {
-			if o[i].Protocol == "ssh" {
-				attributes, err := r.FindAttrById(o[i].ID)
-				if err != nil {
-					continue
-				}
-
-				for j := range attributes {
-					if attributes[j].Name == constant.SshMode {
-						o[i].SshMode = attributes[j].Value
-						break
-					}
-				}
-			}
-			//计算资产连接次数
-			if len(count) > 0 && count[0] {
-				o[i].Count, _ = NewSessionRepository(r.DB).AssetConnectNum(o[i].ID)
-			}
-		}
 	}
 	return
 }
 
-func (r AssetRepository) FindIdsByTags(tags string) (ids []string, err error) {
-	var o []struct {
-		Id string `json:"id"`
-	}
-	db := r.DB.Table("assets").Select("assets.id,assets.tags")
+func (r assetRepository) FindMyAssetTags(c context.Context, assetIds []string) (o []string, err error) {
 
-	if len(tags) > 0 {
-		tagArr := strings.Split(tags, ",")
-		for i := range tagArr {
-			if config.GlobalCfg.DB == "sqlite" {
-				db = db.Where("(',' || assets.tags || ',') LIKE ?", "%,"+tagArr[i]+",%")
-			} else {
-				db = db.Where("find_in_set(?, assets.tags)", tagArr[i])
-			}
-		}
-	}
-
-	err = db.Find(&o).Error
-
-	for _, v := range o {
-		ids = append(ids, v.Id)
-	}
-	return
-}
-func (r AssetRepository) Encrypt(item *model.Asset, password []byte) error {
-	if item.Password != "" && item.Password != "-" {
-		encryptedCBC, err := utils.AesEncryptCBC([]byte(item.Password), password)
-		if err != nil {
-			return err
-		}
-		item.Password = base64.StdEncoding.EncodeToString(encryptedCBC)
-	}
-	if item.PrivateKey != "" && item.PrivateKey != "-" {
-		encryptedCBC, err := utils.AesEncryptCBC([]byte(item.PrivateKey), password)
-		if err != nil {
-			return err
-		}
-		item.PrivateKey = base64.StdEncoding.EncodeToString(encryptedCBC)
-	}
-	if item.Passphrase != "" && item.Passphrase != "-" {
-		encryptedCBC, err := utils.AesEncryptCBC([]byte(item.Passphrase), password)
-		if err != nil {
-			return err
-		}
-		item.Passphrase = base64.StdEncoding.EncodeToString(encryptedCBC)
-	}
-	item.Encrypted = true
-	return nil
-}
-
-func (r AssetRepository) Create(o *model.Asset) (err error) {
-	if err := r.Encrypt(o, config.GlobalCfg.EncryptionPassword); err != nil {
-		return err
-	}
-	if err = r.DB.Create(o).Error; err != nil {
-		return err
-	}
-	return nil
-}
-
-func (r AssetRepository) FindById(id string) (o model.Asset, err error) {
-	err = r.DB.Where("id = ?", id).First(&o).Error
-	return
-}
-
-func (r AssetRepository) Decrypt(item *model.Asset, password []byte) error {
-	if item.Encrypted {
-		if item.Password != "" && item.Password != "-" {
-			origData, err := base64.StdEncoding.DecodeString(item.Password)
-			if err != nil {
-				return err
-			}
-			decryptedCBC, err := utils.AesDecryptCBC(origData, password)
-			if err != nil {
-				return err
-			}
-			item.Password = string(decryptedCBC)
-		}
-		if item.PrivateKey != "" && item.PrivateKey != "-" {
-			origData, err := base64.StdEncoding.DecodeString(item.PrivateKey)
-			if err != nil {
-				return err
-			}
-			decryptedCBC, err := utils.AesDecryptCBC(origData, password)
-			if err != nil {
-				return err
-			}
-			item.PrivateKey = string(decryptedCBC)
-		}
-		if item.Passphrase != "" && item.Passphrase != "-" {
-			origData, err := base64.StdEncoding.DecodeString(item.Passphrase)
-			if err != nil {
-				return err
-			}
-			decryptedCBC, err := utils.AesDecryptCBC(origData, password)
-			if err != nil {
-				return err
-			}
-			item.Passphrase = string(decryptedCBC)
-		}
-	}
-	return nil
-}
-
-func (r AssetRepository) FindByIdAndDecrypt(id string) (o model.Asset, err error) {
-	err = r.DB.Where("id = ?", id).First(&o).Error
-	if err == nil {
-		err = r.Decrypt(&o, config.GlobalCfg.EncryptionPassword)
-	}
-	return
-}
-
-func (r AssetRepository) BatchUpdate(ids []string, username, password, credentialId, accountType string) error {
-	if accountType == "credential" {
-		sql := "update assets set credential_id = ?,account_type = ? where id in ?"
-		return r.DB.Exec(sql, credentialId, accountType, ids).Error
-	} else if accountType == "custom" {
-		sql := "update assets set username = ?,password = ?,account_type = ? where id in ?"
-		return r.DB.Exec(sql, username, password, accountType, ids).Error
-	}
-	return nil
-}
-func (r AssetRepository) UpdateById(o *model.Asset, id string) error {
-	o.ID = id
-	return r.DB.Updates(o).Error
-}
-
-func (r AssetRepository) UpdateActiveById(active bool, id string) error {
-	sql := "update assets set active = ? where id = ?"
-	return r.DB.Exec(sql, active, id).Error
-}
-
-func (r AssetRepository) DeleteById(id string) (err error) {
-	return r.DB.Transaction(func(tx *gorm.DB) error {
-		err = tx.Where("id = ?", id).Delete(&model.Asset{}).Error
-		if err != nil {
-			return err
-		}
-		// 删除资产属性
-		err = tx.Where("asset_id = ?", id).Delete(&model.AssetAttribute{}).Error
-		return err
-	})
-
-}
-
-func (r AssetRepository) Count() (total int64, err error) {
-	err = r.DB.Find(&model.Asset{}).Count(&total).Error
-	return
-}
-
-func (r AssetRepository) CountByProtocol(protocol string) (total int64, err error) {
-	err = r.DB.Find(&model.Asset{}).Where("protocol = ?", protocol).Count(&total).Error
-	return
-}
-
-func (r AssetRepository) CountByUserId(userId string) (total int64, err error) {
-	db := r.DB.Joins("left join resource_sharers on assets.id = resource_sharers.resource_id")
-
-	db = db.Where("assets.owner = ? or resource_sharers.user_id = ?", userId, userId)
-
-	// 查询用户所在用户组列表
-	userGroupIds, err := userGroupRepository.FindUserGroupIdsByUserId(userId)
-	if err != nil {
-		return 0, err
-	}
-
-	if len(userGroupIds) > 0 {
-		db = db.Or("resource_sharers.user_group_id in ?", userGroupIds)
-	}
-	err = db.Find(&model.Asset{}).Count(&total).Error
-	return
-}
-
-func (r AssetRepository) CountByUserIdAndProtocol(userId, protocol string) (total int64, err error) {
-	db := r.DB.Joins("left join resource_sharers on assets.id = resource_sharers.resource_id")
-
-	db = db.Where("( assets.owner = ? or resource_sharers.user_id = ? ) and assets.protocol = ?", userId, userId, protocol)
-
-	// 查询用户所在用户组列表
-	userGroupIds, err := userGroupRepository.FindUserGroupIdsByUserId(userId)
-	if err != nil {
-		return 0, err
-	}
-
-	if len(userGroupIds) > 0 {
-		db = db.Or("resource_sharers.user_group_id in ?", userGroupIds)
-	}
-	err = db.Find(&model.Asset{}).Count(&total).Error
-	return
-}
-
-func (r AssetRepository) FindTags() (o []string, err error) {
 	var assets []model.Asset
-	err = r.DB.Not("tags = '' or tags = '-' ").Find(&assets).Error
+	err = r.GetDB(c).Not("tags = '' or tags = '-' ").Where("id in ?", assetIds).Find(&assets).Error
 	if err != nil {
 		return nil, err
 	}
@@ -388,90 +366,7 @@ func (r AssetRepository) FindTags() (o []string, err error) {
 	return utils.Distinct(o), nil
 }
 
-func (r AssetRepository) UpdateAttributes(assetId, protocol string, m echo.Map) error {
-	var data []model.AssetAttribute
-	var parameterNames []string
-	switch protocol {
-	case "ssh":
-		parameterNames = constant.SSHParameterNames
-	case "rdp":
-		parameterNames = constant.RDPParameterNames
-	case "vnc":
-		parameterNames = constant.VNCParameterNames
-	case "telnet":
-		parameterNames = constant.TelnetParameterNames
-	case "kubernetes":
-		parameterNames = constant.KubernetesParameterNames
-	}
-
-	for i := range parameterNames {
-		name := parameterNames[i]
-		if m[name] != nil && m[name] != "" {
-			data = append(data, genAttribute(assetId, name, m))
-		}
-	}
-
-	return r.DB.Transaction(func(tx *gorm.DB) error {
-		err := tx.Where("asset_id = ?", assetId).Delete(&model.AssetAttribute{}).Error
-		if err != nil {
-			return err
-		}
-		return tx.CreateInBatches(&data, len(data)).Error
-	})
-}
-
-func genAttribute(assetId, name string, m echo.Map) model.AssetAttribute {
-	value := fmt.Sprintf("%v", m[name])
-	attribute := model.AssetAttribute{
-		Id:      utils.Sign([]string{assetId, name}),
-		AssetId: assetId,
-		Name:    name,
-		Value:   value,
-	}
-	return attribute
-}
-
-func (r AssetRepository) FindAttrById(assetId string) (o []model.AssetAttribute, err error) {
-	err = r.DB.Where("asset_id = ?", assetId).Find(&o).Error
-	if o == nil {
-		o = make([]model.AssetAttribute, 0)
-	}
-	return o, err
-}
-
-func (r AssetRepository) FindAssetAttrMapByAssetId(assetId string) (map[string]string, error) {
-	asset, err := r.FindById(assetId)
-	if err != nil {
-		return nil, err
-	}
-	attributes, err := r.FindAttrById(assetId)
-	if err != nil {
-		return nil, err
-	}
-
-	var parameterNames []string
-	switch asset.Protocol {
-	case "ssh":
-		parameterNames = constant.SSHParameterNames
-	case "rdp":
-		parameterNames = constant.RDPParameterNames
-	case "vnc":
-		parameterNames = constant.VNCParameterNames
-	case "telnet":
-		parameterNames = constant.TelnetParameterNames
-	case "kubernetes":
-		parameterNames = constant.KubernetesParameterNames
-	}
-	propertiesMap := propertyRepository.FindAllMap()
-	var attributeMap = make(map[string]string)
-	for name := range propertiesMap {
-		if utils.Contains(parameterNames, name) {
-			attributeMap[name] = propertiesMap[name]
-		}
-	}
-
-	for i := range attributes {
-		attributeMap[attributes[i].Name] = attributes[i].Value
-	}
-	return attributeMap, nil
+func (r assetRepository) UpdateLastAccessTime(ctx context.Context, assetId string, now common.JsonTime) error {
+	asset := &model.Asset{ID: assetId, LastAccessTime: now}
+	return r.GetDB(ctx).Table("assets").Updates(asset).Error
 }
