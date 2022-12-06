@@ -4,20 +4,18 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
+	"next-terminal/server/config"
+	"next-terminal/server/global/session"
 	"path"
 	"strconv"
 
-	"next-terminal/server/config"
-	"next-terminal/server/constant"
+	"next-terminal/server/common/guacamole"
+	"next-terminal/server/common/nt"
+	"next-terminal/server/common/term"
 	"next-terminal/server/dto"
-	"next-terminal/server/global/session"
-	"next-terminal/server/guacd"
-	"next-terminal/server/log"
 	"next-terminal/server/model"
 	"next-terminal/server/repository"
 	"next-terminal/server/service"
-	"next-terminal/server/term"
 	"next-terminal/server/utils"
 
 	"github.com/gorilla/websocket"
@@ -38,7 +36,6 @@ type WebTerminalApi struct {
 func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 	ws, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {
-		log.Errorf("升级为WebSocket协议失败：%v", err.Error())
 		return err
 	}
 
@@ -53,7 +50,7 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 
 	s, err := service.SessionService.FindByIdAndDecrypt(ctx, sessionId)
 	if err != nil {
-		return WriteMessage(ws, dto.NewMessage(Closed, "获取会话失败"))
+		return WriteMessage(ws, dto.NewMessage(Closed, "获取会话或解密数据失败"))
 	}
 
 	if err := api.permissionCheck(c, s.AssetId); err != nil {
@@ -70,25 +67,23 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 	)
 
 	if s.AccessGatewayId != "" && s.AccessGatewayId != "-" {
-		g, err := service.GatewayService.GetGatewayAndReconnectById(s.AccessGatewayId)
+		g, err := service.GatewayService.GetGatewayById(s.AccessGatewayId)
 		if err != nil {
 			return WriteMessage(ws, dto.NewMessage(Closed, "获取接入网关失败："+err.Error()))
 		}
-		if !g.Connected {
-			return WriteMessage(ws, dto.NewMessage(Closed, "接入网关不可用："+g.Message))
-		}
+
+		defer g.CloseSshTunnel(s.ID)
 		exposedIP, exposedPort, err := g.OpenSshTunnel(s.ID, ip, port)
 		if err != nil {
 			return WriteMessage(ws, dto.NewMessage(Closed, "创建隧道失败："+err.Error()))
 		}
-		defer g.CloseSshTunnel(s.ID)
 		ip = exposedIP
 		port = exposedPort
 	}
 
 	recording := ""
 	var isRecording = false
-	property, err := repository.PropertyRepository.FindByName(ctx, guacd.EnableRecording)
+	property, err := repository.PropertyRepository.FindByName(ctx, guacamole.EnableRecording)
 	if err == nil && property.Value == "true" {
 		isRecording = true
 	}
@@ -104,8 +99,8 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 
 	var xterm = "xterm-256color"
 	var nextTerminal *term.NextTerminal
-	if "true" == attributes[constant.SocksProxyEnable] {
-		nextTerminal, err = term.NewNextTerminalUseSocks(ip, port, username, password, privateKey, passphrase, rows, cols, recording, xterm, true, attributes[constant.SocksProxyHost], attributes[constant.SocksProxyPort], attributes[constant.SocksProxyUsername], attributes[constant.SocksProxyPassword])
+	if "true" == attributes[nt.SocksProxyEnable] {
+		nextTerminal, err = term.NewNextTerminalUseSocks(ip, port, username, password, privateKey, passphrase, rows, cols, recording, xterm, true, attributes[nt.SocksProxyHost], attributes[nt.SocksProxyPort], attributes[nt.SocksProxyUsername], attributes[nt.SocksProxyPassword])
 	} else {
 		nextTerminal, err = term.NewNextTerminal(ip, port, username, password, privateKey, passphrase, rows, cols, recording, xterm, true)
 	}
@@ -122,20 +117,19 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 		return err
 	}
 
-	sess := model.Session{
+	sessionForUpdate := model.Session{
 		ConnectionId: sessionId,
 		Width:        cols,
 		Height:       rows,
-		Status:       constant.Connecting,
+		Status:       nt.Connecting,
 		Recording:    recording,
 	}
-	if sess.Recording == "" {
+	if sessionForUpdate.Recording == "" {
 		// 未录屏时无需审计
-		sess.Reviewed = true
+		sessionForUpdate.Reviewed = true
 	}
 	// 创建新会话
-	log.Debugf("创建新会话 %v", sess.ConnectionId)
-	if err := repository.SessionRepository.UpdateById(ctx, &sess, sessionId); err != nil {
+	if err := repository.SessionRepository.UpdateById(ctx, &sessionForUpdate, sessionId); err != nil {
 		return err
 	}
 
@@ -152,9 +146,9 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 		NextTerminal: nextTerminal,
 		Observer:     session.NewObserver(s.ID),
 	}
-	session.GlobalSessionManager.Add <- nextSession
+	session.GlobalSessionManager.Add(nextSession)
 
-	termHandler := NewTermHandler(sessionId, isRecording, ws, nextTerminal)
+	termHandler := NewTermHandler(s.Creator, s.AssetId, sessionId, isRecording, ws, nextTerminal)
 	termHandler.Start()
 	defer termHandler.Stop()
 
@@ -162,14 +156,12 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
 			// web socket会话关闭后主动关闭ssh会话
-			log.Debugf("WebSocket已关闭")
 			service.SessionService.CloseSessionById(sessionId, Normal, "用户正常退出")
 			break
 		}
 
 		msg, err := dto.ParseMessage(string(message))
 		if err != nil {
-			log.Warnf("消息解码失败: %v, 原始字符串：%v", err, string(message))
 			continue
 		}
 
@@ -177,31 +169,28 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 		case Resize:
 			decodeString, err := base64.StdEncoding.DecodeString(msg.Content)
 			if err != nil {
-				log.Warnf("Base64解码失败: %v，原始字符串：%v", err, msg.Content)
 				continue
 			}
 			var winSize dto.WindowSize
 			err = json.Unmarshal(decodeString, &winSize)
 			if err != nil {
-				log.Warnf("解析SSH会话窗口大小失败: %v，原始字符串：%v", err, msg.Content)
 				continue
 			}
-			if err := nextTerminal.WindowChange(winSize.Rows, winSize.Cols); err != nil {
-				log.Warnf("更改SSH会话窗口大小失败: %v", err)
+			if err := termHandler.WindowChange(winSize.Rows, winSize.Cols); err != nil {
 			}
 			_ = repository.SessionRepository.UpdateWindowSizeById(ctx, winSize.Rows, winSize.Cols, sessionId)
 		case Data:
 			input := []byte(msg.Content)
-			_, err := nextTerminal.Write(input)
+			err := termHandler.Write(input)
 			if err != nil {
 				service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
 			}
 		case Ping:
-			_, _, err := nextTerminal.SshClient.Conn.SendRequest("helloworld1024@foxmail.com", true, nil)
+			err := termHandler.SendRequest()
 			if err != nil {
 				service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
 			} else {
-				_ = termHandler.WriteMessage(dto.NewMessage(Ping, ""))
+				_ = termHandler.SendMessageToWebSocket(dto.NewMessage(Ping, ""))
 			}
 
 		}
@@ -212,7 +201,6 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 func (api WebTerminalApi) SshMonitorEndpoint(c echo.Context) error {
 	ws, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {
-		log.Errorf("升级为WebSocket协议失败：%v", err.Error())
 		return err
 	}
 
@@ -239,14 +227,12 @@ func (api WebTerminalApi) SshMonitorEndpoint(c echo.Context) error {
 		Mode:      s.Mode,
 		WebSocket: ws,
 	}
-	nextSession.Observer.Add <- obSession
-	log.Debugf("会话 %v 观察者 %v 进入", sessionId, obId)
+	nextSession.Observer.Add(obSession)
 
 	for {
 		_, _, err := ws.ReadMessage()
 		if err != nil {
-			log.Debugf("会话 %v 观察者 %v 退出", sessionId, obId)
-			nextSession.Observer.Del <- obId
+			nextSession.Observer.Del(obId)
 			break
 		}
 	}
@@ -255,16 +241,16 @@ func (api WebTerminalApi) SshMonitorEndpoint(c echo.Context) error {
 
 func (api WebTerminalApi) permissionCheck(c echo.Context, assetId string) error {
 	user, _ := GetCurrentAccount(c)
-	if constant.TypeUser == user.Type {
-		// 检测是否有访问权限
-		assetIds, err := repository.ResourceSharerRepository.FindAssetIdsByUserId(context.TODO(), user.ID)
-		if err != nil {
-			return err
-		}
-
-		if !utils.Contains(assetIds, assetId) {
-			return errors.New("您没有权限访问此资产")
-		}
+	if nt.TypeUser == user.Type {
+		// 检测是否有访问权限 TODO
+		//assetIds, err := repository.ResourceSharerRepository.FindAssetIdsByUserId(context.TODO(), user.ID)
+		//if err != nil {
+		//	return err
+		//}
+		//
+		//if !utils.Contains(assetIds, assetId) {
+		//	return errors.New("您没有权限访问此资产")
+		//}
 	}
 	return nil
 }

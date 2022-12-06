@@ -4,14 +4,17 @@ import (
 	"context"
 	"encoding/base64"
 	"errors"
+	"next-terminal/server/common/nt"
+	"os"
+	"path"
 	"strconv"
 	"sync"
 
+	"next-terminal/server/common"
+	"next-terminal/server/common/guacamole"
 	"next-terminal/server/config"
-	"next-terminal/server/constant"
 	"next-terminal/server/env"
 	"next-terminal/server/global/session"
-	"next-terminal/server/guacd"
 	"next-terminal/server/log"
 	"next-terminal/server/model"
 	"next-terminal/server/repository"
@@ -20,12 +23,14 @@ import (
 	"gorm.io/gorm"
 )
 
+var SessionService = new(sessionService)
+
 type sessionService struct {
 	baseService
 }
 
 func (service sessionService) FixSessionState() error {
-	sessions, err := repository.SessionRepository.FindByStatus(context.TODO(), constant.Connected)
+	sessions, err := repository.SessionRepository.FindByStatus(context.TODO(), nt.Connected)
 	if err != nil {
 		return err
 	}
@@ -33,8 +38,8 @@ func (service sessionService) FixSessionState() error {
 	if len(sessions) > 0 {
 		for i := range sessions {
 			s := model.Session{
-				Status:           constant.Disconnected,
-				DisconnectedTime: utils.NowJsonTime(),
+				Status:           nt.Disconnected,
+				DisconnectedTime: common.NowJsonTime(),
 			}
 
 			_ = repository.SessionRepository.UpdateById(context.TODO(), &s, sessions[i].ID)
@@ -48,7 +53,7 @@ func (service sessionService) EmptyPassword() error {
 }
 
 func (service sessionService) ClearOfflineSession() error {
-	sessions, err := repository.SessionRepository.FindByStatus(context.TODO(), constant.Disconnected)
+	sessions, err := repository.SessionRepository.FindByStatus(context.TODO(), nt.Disconnected)
 	if err != nil {
 		return err
 	}
@@ -56,7 +61,21 @@ func (service sessionService) ClearOfflineSession() error {
 	for i := range sessions {
 		sessionIds = append(sessionIds, sessions[i].ID)
 	}
-	return repository.SessionRepository.DeleteByIds(context.TODO(), sessionIds)
+
+	return service.DeleteByIds(context.TODO(), sessionIds)
+}
+
+func (service sessionService) DeleteByIds(c context.Context, sessionIds []string) error {
+	recordingPath := config.GlobalCfg.Guacd.Recording
+	for i := range sessionIds {
+		if err := os.RemoveAll(path.Join(recordingPath, sessionIds[i])); err != nil {
+			return err
+		}
+		if err := repository.SessionRepository.DeleteById(c, sessionIds[i]); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (service sessionService) ReviewedAll() error {
@@ -92,30 +111,29 @@ func (service sessionService) CloseSessionById(sessionId string, code int, reaso
 	defer mutex.Unlock()
 	nextSession := session.GlobalSessionManager.GetById(sessionId)
 	if nextSession != nil {
-		log.Debugf("[%v] 会话关闭，原因：%v", sessionId, reason)
+		log.Debug("会话关闭", log.String("会话ID", sessionId), log.String("原因", reason))
 		service.WriteCloseMessage(nextSession, nextSession.Mode, code, reason)
 
 		if nextSession.Observer != nil {
-			obs := nextSession.Observer.All()
-			for _, ob := range obs {
+			nextSession.Observer.Range(func(key string, ob *session.Session) {
 				service.WriteCloseMessage(ob, ob.Mode, code, reason)
-				log.Debugf("[%v] 强制踢出会话的观察者: %v", sessionId, ob.ID)
-			}
+				log.Debug("强制踢出会话的观察者", log.String("会话ID", sessionId))
+			})
 		}
 	}
-	session.GlobalSessionManager.Del <- sessionId
+	session.GlobalSessionManager.Del(sessionId)
 
 	service.DisDBSess(sessionId, code, reason)
 }
 
 func (service sessionService) WriteCloseMessage(sess *session.Session, mode string, code int, reason string) {
 	switch mode {
-	case constant.Guacd:
-		err := guacd.NewInstruction("error", "", strconv.Itoa(code))
+	case nt.Guacd:
+		err := guacamole.NewInstruction("error", "", strconv.Itoa(code))
 		_ = sess.WriteString(err.String())
-		disconnect := guacd.NewInstruction("disconnect")
+		disconnect := guacamole.NewInstruction("disconnect")
 		_ = sess.WriteString(disconnect.String())
-	case constant.Native, constant.Terminal:
+	case nt.Native, nt.Terminal:
 		msg := `0` + reason
 		_ = sess.WriteString(msg)
 	}
@@ -129,11 +147,11 @@ func (service sessionService) DisDBSess(sessionId string, code int, reason strin
 			return err
 		}
 
-		if s.Status == constant.Disconnected {
-			return err
+		if s.Status == nt.Disconnected {
+			return nil
 		}
 
-		if s.Status == constant.Connecting {
+		if s.Status == nt.Connecting {
 			// 会话还未建立成功，无需保留数据
 			if err := repository.SessionRepository.DeleteById(c, sessionId); err != nil {
 				return err
@@ -143,8 +161,8 @@ func (service sessionService) DisDBSess(sessionId string, code int, reason strin
 
 		ss := model.Session{}
 		ss.ID = sessionId
-		ss.Status = constant.Disconnected
-		ss.DisconnectedTime = utils.NowJsonTime()
+		ss.Status = nt.Disconnected
+		ss.DisconnectedTime = common.NowJsonTime()
 		ss.Code = code
 		ss.Message = reason
 		ss.Password = "-"
@@ -207,6 +225,13 @@ func (service sessionService) Decrypt(item *model.Session) error {
 	return nil
 }
 
+func (service sessionService) renderBoolToStr(b *bool) string {
+	if *(b) == true {
+		return "1"
+	}
+	return "0"
+}
+
 func (service sessionService) Create(clientIp, assetId, mode string, user *model.User) (*model.Session, error) {
 	asset, err := repository.AssetRepository.FindById(context.TODO(), assetId)
 	if err != nil {
@@ -224,16 +249,17 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 		paste      = "1"
 	)
 
-	if asset.Owner != user.ID && constant.TypeUser == user.Type {
+	if asset.Owner != user.ID && nt.TypeUser == user.Type {
 		// 普通用户访问非自己创建的资产需要校验权限
-		resourceSharers, err := repository.ResourceSharerRepository.FindByResourceIdAndUserId(context.TODO(), assetId, user.ID)
+		authorised, err := AuthorisedService.GetAuthorised(user.ID, assetId)
 		if err != nil {
 			return nil, err
 		}
-		if len(resourceSharers) == 0 {
+
+		if authorised == nil || authorised.ID == "" {
 			return nil, errors.New("您没有权限访问此资产")
 		}
-		strategyId := resourceSharers[0].StrategyId
+		strategyId := authorised.StrategyId
 		if strategyId != "" {
 			strategy, err := repository.StrategyRepository.FindById(context.TODO(), strategyId)
 			if err != nil {
@@ -241,26 +267,27 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 					return nil, err
 				}
 			} else {
-				upload = strategy.Upload
-				download = strategy.Download
-				_delete = strategy.Delete
-				rename = strategy.Rename
-				edit = strategy.Edit
-				_copy = strategy.Copy
-				paste = strategy.Paste
+
+				upload = service.renderBoolToStr(strategy.Upload)
+				download = service.renderBoolToStr(strategy.Download)
+				_delete = service.renderBoolToStr(strategy.Delete)
+				rename = service.renderBoolToStr(strategy.Rename)
+				edit = service.renderBoolToStr(strategy.Edit)
+				_copy = service.renderBoolToStr(strategy.Copy)
+				paste = service.renderBoolToStr(strategy.Paste)
 			}
 		}
 	}
 
 	var storageId = ""
-	if constant.RDP == asset.Protocol {
+	if nt.RDP == asset.Protocol {
 		attr, err := repository.AssetRepository.FindAssetAttrMapByAssetId(context.TODO(), assetId)
 		if err != nil {
 			return nil, err
 		}
-		if "true" == attr[guacd.EnableDrive] {
+		if "true" == attr[guacamole.EnableDrive] {
 			fileSystem = "1"
-			storageId = attr[guacd.DrivePath]
+			storageId = attr[guacamole.DrivePath]
 			if storageId == "" {
 				storageId = user.ID
 			}
@@ -303,7 +330,7 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 		Protocol:        asset.Protocol,
 		IP:              asset.IP,
 		Port:            asset.Port,
-		Status:          constant.NoConnect,
+		Status:          nt.NoConnect,
 		ClientIP:        clientIp,
 		Mode:            mode,
 		FileSystem:      fileSystem,
@@ -318,7 +345,7 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 		AccessGatewayId: asset.AccessGatewayId,
 		Reviewed:        false,
 	}
-	if constant.Anonymous != user.Type {
+	if nt.Anonymous != user.Type {
 		s.Creator = user.ID
 	}
 
@@ -328,7 +355,7 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 			return nil, err
 		}
 
-		if credential.Type == constant.Custom {
+		if credential.Type == nt.Custom {
 			s.Username = credential.Username
 			s.Password = credential.Password
 		} else {
@@ -339,6 +366,9 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 	}
 
 	if err := repository.SessionRepository.Create(context.TODO(), s); err != nil {
+		return nil, err
+	}
+	if err := repository.AssetRepository.UpdateLastAccessTime(context.Background(), s.AssetId, common.NowJsonTime()); err != nil {
 		return nil, err
 	}
 	return s, nil

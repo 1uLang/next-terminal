@@ -3,18 +3,13 @@ package app
 import (
 	"encoding/json"
 	"fmt"
-	"net/http"
-	_ "net/http/pprof"
-
-	"next-terminal/server/log"
-
-	"next-terminal/server/cli"
-	"next-terminal/server/config"
-	"next-terminal/server/constant"
-	"next-terminal/server/service"
-	"next-terminal/server/sshd"
 
 	"github.com/labstack/echo/v4"
+	"next-terminal/server/branding"
+	"next-terminal/server/config"
+	"next-terminal/server/service"
+	"next-terminal/server/sshd"
+	"next-terminal/server/task"
 )
 
 var app *App
@@ -36,7 +31,7 @@ func (app App) InitDBData() (err error) {
 	if err := service.PropertyService.DeleteDeprecatedProperty(); err != nil {
 		return err
 	}
-	if err := service.GatewayService.ReConnectAll(); err != nil {
+	if err := service.GatewayService.LoadAll(); err != nil {
 		return err
 	}
 	if err := service.PropertyService.InitProperties(); err != nil {
@@ -66,12 +61,21 @@ func (app App) InitDBData() (err error) {
 	if err := service.StorageService.InitStorages(); err != nil {
 		return err
 	}
-
+	if err := service.MenuService.Init(); err != nil {
+		return err
+	}
+	if err := service.RoleService.Init(); err != nil {
+		return err
+	}
 	// 修复数据
 	if err := service.AssetService.FixSshMode(); err != nil {
 		return err
 	}
 	if err := service.SessionService.FixSshMode(); err != nil {
+		return err
+	}
+
+	if err := service.MigrateService.Migrate(); err != nil {
 		return err
 	}
 
@@ -93,7 +97,7 @@ func (app App) ReloadData() error {
 
 func Run() error {
 
-	fmt.Printf(constant.AppBanner, constant.AppVersion)
+	fmt.Printf(branding.Hi)
 
 	if err := app.InitDBData(); err != nil {
 		panic(err)
@@ -108,13 +112,11 @@ func Run() error {
 		if err != nil {
 			return err
 		}
-		go func() {
-			log.Fatal(http.ListenAndServe("localhost:8099", nil))
-		}()
+
 		fmt.Printf("当前配置为: %v\n", string(jsonBytes))
 	}
 
-	_cli := cli.NewCli()
+	_cli := service.NewCli()
 
 	if config.GlobalCfg.ResetPassword != "" {
 		return _cli.ResetPassword(config.GlobalCfg.ResetPassword)
@@ -127,6 +129,8 @@ func Run() error {
 		return _cli.ChangeEncryptionKey(config.GlobalCfg.EncryptionKey, config.GlobalCfg.NewEncryptionKey)
 	}
 
+	ticker := task.NewTicker()
+	ticker.SetupTicker()
 	if config.GlobalCfg.Sshd.Enable {
 		go sshd.Sshd.Serve()
 	}

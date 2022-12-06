@@ -7,6 +7,8 @@ import (
 	"next-terminal/server/repository"
 )
 
+var SecurityService = new(securityService)
+
 type securityService struct{}
 
 func (service securityService) ReloadAccessSecurity() error {
@@ -25,7 +27,7 @@ func (service securityService) ReloadAccessSecurity() error {
 				Rule:     rules[i].Rule,
 				Priority: rules[i].Priority,
 			}
-			security.GlobalSecurityManager.Add <- rule
+			security.GlobalSecurityManager.Add(rule)
 		}
 	}
 	return nil

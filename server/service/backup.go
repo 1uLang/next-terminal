@@ -4,19 +4,23 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
+	"next-terminal/server/common/maps"
 	"strings"
 
+	"next-terminal/server/common"
+	"next-terminal/server/common/nt"
 	"next-terminal/server/config"
-	"next-terminal/server/constant"
 	"next-terminal/server/dto"
 	"next-terminal/server/env"
 	"next-terminal/server/global/security"
 	"next-terminal/server/repository"
 	"next-terminal/server/utils"
 
-	"github.com/labstack/echo/v4"
 	"gorm.io/gorm"
 )
+
+var BackupService = new(backupService)
 
 type backupService struct {
 	baseService
@@ -105,11 +109,6 @@ func (service backupService) Export() (error, *dto.Backup) {
 		}
 	}
 
-	resourceSharers, err := repository.ResourceSharerRepository.FindAll(ctx)
-	if err != nil {
-		return err, nil
-	}
-
 	backup := dto.Backup{
 		Users:            users,
 		UserGroups:       userGroups,
@@ -121,7 +120,6 @@ func (service backupService) Export() (error, *dto.Backup) {
 		Commands:         commands,
 		Credentials:      credentials,
 		Assets:           assetMaps,
-		ResourceSharers:  resourceSharers,
 	}
 	return nil, &backup
 }
@@ -165,7 +163,7 @@ func (service backupService) Import(backup *dto.Backup) error {
 
 				userGroup, err := UserGroupService.Create(ctx, item.Name, members)
 				if err != nil {
-					if errors.Is(constant.ErrNameAlreadyUsed, err) {
+					if errors.Is(nt.ErrNameAlreadyUsed, err) {
 						// 删除名称重复的用户组
 						delete(userGroupIdMapping, oldId)
 						continue
@@ -186,7 +184,7 @@ func (service backupService) Import(backup *dto.Backup) error {
 				}
 				item.ID = utils.UUID()
 				item.Owner = owner
-				item.Created = utils.NowJsonTime()
+				item.Created = common.NowJsonTime()
 				if err := repository.StorageRepository.Create(ctx, &item); err != nil {
 					return err
 				}
@@ -199,7 +197,7 @@ func (service backupService) Import(backup *dto.Backup) error {
 				oldId := item.ID
 				newId := utils.UUID()
 				item.ID = newId
-				item.Created = utils.NowJsonTime()
+				item.Created = common.NowJsonTime()
 				if err := repository.StrategyRepository.Create(ctx, &item); err != nil {
 					return err
 				}
@@ -220,7 +218,7 @@ func (service backupService) Import(backup *dto.Backup) error {
 					Rule:     item.Rule,
 					Priority: item.Priority,
 				}
-				security.GlobalSecurityManager.Add <- rule
+				security.GlobalSecurityManager.Add(rule)
 			}
 		}
 
@@ -230,7 +228,7 @@ func (service backupService) Import(backup *dto.Backup) error {
 				oldId := item.ID
 				newId := utils.UUID()
 				item.ID = newId
-				item.Created = utils.NowJsonTime()
+				item.Created = common.NowJsonTime()
 				if err := repository.GatewayRepository.Create(ctx, &item); err != nil {
 					return err
 				}
@@ -241,7 +239,7 @@ func (service backupService) Import(backup *dto.Backup) error {
 		if len(backup.Commands) > 0 {
 			for _, item := range backup.Commands {
 				item.ID = utils.UUID()
-				item.Created = utils.NowJsonTime()
+				item.Created = common.NowJsonTime()
 				if err := repository.CommandRepository.Create(ctx, &item); err != nil {
 					return err
 				}
@@ -268,7 +266,7 @@ func (service backupService) Import(backup *dto.Backup) error {
 				if err != nil {
 					return err
 				}
-				m := echo.Map{}
+				m := maps.Map{}
 				if err := json.Unmarshal(data, &m); err != nil {
 					return err
 				}
@@ -291,23 +289,9 @@ func (service backupService) Import(backup *dto.Backup) error {
 			}
 		}
 
-		if len(backup.ResourceSharers) > 0 {
-			for _, item := range backup.ResourceSharers {
-
-				userGroupId := userGroupIdMapping[item.UserGroupId]
-				userId := userIdMapping[item.UserId]
-				strategyId := strategyIdMapping[item.StrategyId]
-				resourceId := assetIdMapping[item.ResourceId]
-
-				if err := UserService.AddSharerResources(ctx, userGroupId, userId, strategyId, item.ResourceType, []string{resourceId}); err != nil {
-					return err
-				}
-			}
-		}
-
 		if len(backup.Jobs) > 0 {
 			for _, item := range backup.Jobs {
-				if item.Func == constant.FuncCheckAssetStatusJob {
+				if item.Func == nt.FuncCheckAssetStatusJob {
 					continue
 				}
 

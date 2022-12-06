@@ -3,53 +3,48 @@ package gateway
 import (
 	"sync"
 
-	"next-terminal/server/log"
+	"next-terminal/server/model"
 )
 
-type Manager struct {
-	gateways *sync.Map
-
-	Add chan *Gateway
-	Del chan string
+type manager struct {
+	gateways sync.Map
 }
 
-func NewManager() *Manager {
-	return &Manager{
-		Add:      make(chan *Gateway),
-		Del:      make(chan string),
-		gateways: new(sync.Map),
-	}
-}
-
-func (m *Manager) Start() {
-	for {
-		select {
-		case g := <-m.Add:
-			m.gateways.Store(g.ID, g)
-			log.Info("add gateway: %s", g.ID)
-			go g.Run()
-		case k := <-m.Del:
-			if val, ok := m.gateways.Load(k); ok {
-				if vv, vok := val.(*Gateway); vok {
-					vv.Close()
-					m.gateways.Delete(k)
-				}
-
-			}
-		}
-	}
-}
-
-func (m Manager) GetById(id string) *Gateway {
+func (m *manager) GetById(id string) *Gateway { //TODO 差异
 	if val, ok := m.gateways.Load(id); ok {
 		return val.(*Gateway)
 	}
 	return nil
 }
 
-var GlobalGatewayManager *Manager
+func (m *manager) Add(model *model.AccessGateway) *Gateway {
+	g := &Gateway{
+		ID:         model.ID,
+		IP:         model.IP,
+		Port:       model.Port,
+		Username:   model.Username,
+		Password:   model.Password,
+		PrivateKey: model.PrivateKey,
+		Passphrase: model.Passphrase,
+		Connected:  false,
+		SshClient:  nil,
+		Message:    "暂未使用",
+		tunnels:    make(map[string]*Tunnel),
+	}
+	m.gateways.Store(g.ID, g)
+	return g
+}
+
+func (m *manager) Del(id string) {
+	g := m.GetById(id)
+	if g != nil {
+		g.Close()
+	}
+	m.gateways.Delete(id)
+}
+
+var GlobalGatewayManager *manager
 
 func init() {
-	GlobalGatewayManager = NewManager()
-	go GlobalGatewayManager.Start()
+	GlobalGatewayManager = &manager{}
 }

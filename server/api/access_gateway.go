@@ -2,15 +2,17 @@ package api
 
 import (
 	"context"
+	"next-terminal/server/common"
+	"next-terminal/server/common/maps"
 	"strconv"
 	"strings"
 
+	"github.com/labstack/echo/v4"
+	"next-terminal/server/global/gateway"
 	"next-terminal/server/model"
 	"next-terminal/server/repository"
 	"next-terminal/server/service"
 	"next-terminal/server/utils"
-
-	"github.com/labstack/echo/v4"
 )
 
 type AccessGatewayApi struct{}
@@ -22,13 +24,13 @@ func (api AccessGatewayApi) AccessGatewayCreateEndpoint(c echo.Context) error {
 	}
 
 	item.ID = utils.UUID()
-	item.Created = utils.NowJsonTime()
+	item.Created = common.NowJsonTime()
 
 	if err := repository.GatewayRepository.Create(context.TODO(), &item); err != nil {
 		return err
 	}
 	// 连接网关
-	go service.GatewayService.ReConnect(&item)
+	service.GatewayService.ReLoad(&item)
 	return Success(c, item.ID)
 }
 
@@ -37,11 +39,14 @@ func (api AccessGatewayApi) AccessGatewayAllEndpoint(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	var simpleGateways = make([]model.AccessGatewayForPage, 0)
-	for i := 0; i < len(gateways); i++ {
-		simpleGateways = append(simpleGateways, model.AccessGatewayForPage{ID: gateways[i].ID, Name: gateways[i].Name})
+	items := make([]maps.Map, len(gateways))
+	for i, e := range gateways {
+		items[i] = maps.Map{
+			"id":   e.ID,
+			"name": e.Name,
+		}
 	}
-	return Success(c, simpleGateways)
+	return Success(c, items)
 }
 
 func (api AccessGatewayApi) AccessGatewayPagingEndpoint(c echo.Context) error {
@@ -58,15 +63,15 @@ func (api AccessGatewayApi) AccessGatewayPagingEndpoint(c echo.Context) error {
 		return err
 	}
 	for i := 0; i < len(items); i++ {
-		g, err := service.GatewayService.GetGatewayById(items[i].ID)
-		if err != nil {
-			return err
+
+		g := gateway.GlobalGatewayManager.GetById(items[i].ID)
+		if g != nil {
+			items[i].Connected = g.Connected
+			items[i].Message = g.Message
 		}
-		items[i].Connected = g.Connected
-		items[i].Message = g.Message
 	}
 
-	return Success(c, Map{
+	return Success(c, maps.Map{
 		"total": total,
 		"items": items,
 	})
@@ -83,7 +88,7 @@ func (api AccessGatewayApi) AccessGatewayUpdateEndpoint(c echo.Context) error {
 	if err := repository.GatewayRepository.UpdateById(context.TODO(), &item, id); err != nil {
 		return err
 	}
-	go service.GatewayService.ReConnect(&item)
+	service.GatewayService.ReLoad(&item)
 	return Success(c, nil)
 }
 
@@ -118,7 +123,7 @@ func (api AccessGatewayApi) AccessGatewayReconnectEndpoint(c echo.Context) error
 	if err != nil {
 		return err
 	}
-	service.GatewayService.ReConnect(&item)
+	service.GatewayService.ReLoad(&item)
 	return Success(c, "")
 }
 
@@ -144,7 +149,7 @@ func (api AccessGatewayApi) AccessGatewayListEndpoint(c echo.Context) error {
 		items[i].Message = g.Message
 	}
 
-	return Success(c, Map{
+	return Success(c, maps.Map{
 		"total": total,
 		"items": items,
 	})

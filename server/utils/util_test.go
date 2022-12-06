@@ -38,6 +38,14 @@ func TestTcping(t *testing.T) {
 	}()
 }
 
+func TestBcryptEncode(t *testing.T) {
+
+	if pass, err := utils.Encoder.Encode([]byte("Cloud123!@#")); err != nil {
+		t.Fatal(err)
+	} else {
+		fmt.Println(string(pass))
+	}
+}
 func TestAesEncryptCBC(t *testing.T) {
 	origData := []byte("Hello Next Terminal") // 待加密的数据
 	md5Sum := fmt.Sprintf("%x", md5.Sum([]byte("next-terminal")))
@@ -93,4 +101,8 @@ func TestAesEncryptCBC2(t *testing.T) {
 	encryptedCBC, err := utils.AesEncryptCBC(origData, key)
 	assert.NoError(t, err)
 	assert.Equal(t, "3Tbnz0MYHQNTsN2L6QDGCJumbNFsQcmErrRz/KglYI/IDh88lsyOhVi7mgaAs/bjevvJa2F1JT7jUMLsz9/cpw==", base64.StdEncoding.EncodeToString(encryptedCBC))
+}
+
+func TestUUID(t *testing.T) {
+	println(utils.UUID())
 }

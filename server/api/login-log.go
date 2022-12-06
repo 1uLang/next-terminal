@@ -2,13 +2,13 @@ package api
 
 import (
 	"context"
+	"next-terminal/server/common/maps"
 	"strconv"
 	"strings"
 
+	"github.com/labstack/echo/v4"
 	"next-terminal/server/repository"
 	"next-terminal/server/service"
-
-	"github.com/labstack/echo/v4"
 )
 
 type LoginLogApi struct{}
@@ -26,7 +26,7 @@ func (api LoginLogApi) LoginLogPagingEndpoint(c echo.Context) error {
 		return err
 	}
 
-	return Success(c, Map{
+	return Success(c, maps.Map{
 		"total": total,
 		"items": items,
 	})

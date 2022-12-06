@@ -1,6 +1,7 @@
 name: Docker next-terminal Build
 
 on:
+  workflow_dispatch:
   push:
     tags:
       - "v*"
@@ -22,12 +23,13 @@ jobs:
       - name: node Setup
         uses: actions/setup-node@v2
         with:
-          node-version: '14'
+          node-version: '16'
       - name: npm install
         run: |
           cd web
-          npm install
-          npm run build
+          npm install --global yarn
+          yarn 
+          yarn build
       - name: Docker Login
         uses: docker/login-action@v1.10.0
         with:

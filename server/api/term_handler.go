@@ -1,16 +1,16 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"sync"
 	"time"
 	"unicode/utf8"
 
+	"github.com/gorilla/websocket"
+	"next-terminal/server/common/term"
 	"next-terminal/server/dto"
 	"next-terminal/server/global/session"
-	"next-terminal/server/term"
-
-	"github.com/gorilla/websocket"
 )
 
 type TermHandler struct {
@@ -23,11 +23,13 @@ type TermHandler struct {
 	dataChan     chan rune
 	tick         *time.Ticker
 	mutex        sync.Mutex
+	buf          bytes.Buffer
 }
 
-func NewTermHandler(sessionId string, isRecording bool, ws *websocket.Conn, nextTerminal *term.NextTerminal) *TermHandler {
+func NewTermHandler(userId, assetId, sessionId string, isRecording bool, ws *websocket.Conn, nextTerminal *term.NextTerminal) *TermHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 	tick := time.NewTicker(time.Millisecond * time.Duration(60))
+
 	return &TermHandler{
 		sessionId:    sessionId,
 		isRecording:  isRecording,
@@ -68,40 +70,65 @@ func (r *TermHandler) readFormTunnel() {
 }
 
 func (r *TermHandler) writeToWebsocket() {
-	var buf []byte
 	for {
 		select {
 		case <-r.ctx.Done():
 			return
 		case <-r.tick.C:
-			if len(buf) > 0 {
-				s := string(buf)
-				if err := r.WriteMessage(dto.NewMessage(Data, s)); err != nil {
-					return
-				}
-				// 录屏
-				if r.isRecording {
-					_ = r.nextTerminal.Recorder.WriteData(s)
-				}
-				nextSession := session.GlobalSessionManager.GetById(r.sessionId)
-				// 监控
-				if nextSession != nil && len(nextSession.Observer.All()) > 0 {
-					obs := nextSession.Observer.All()
-					for _, ob := range obs {
-						_ = ob.WriteMessage(dto.NewMessage(Data, s))
-					}
-				}
-				buf = []byte{}
+			s := r.buf.String()
+			if err := r.SendMessageToWebSocket(dto.NewMessage(Data, s)); err != nil {
+				return
 			}
+			// 录屏
+			if r.isRecording {
+				_ = r.nextTerminal.Recorder.WriteData(s)
+			}
+			// 监控
+			SendObData(r.sessionId, s)
+			r.buf.Reset()
 		case data := <-r.dataChan:
 			if data != utf8.RuneError {
 				p := make([]byte, utf8.RuneLen(data))
 				utf8.EncodeRune(p, data)
-				buf = append(buf, p...)
+				r.buf.Write(p)
 			} else {
-				buf = append(buf, []byte("@")...)
+				r.buf.Write([]byte("@"))
 			}
 		}
+	}
+}
+
+func (r *TermHandler) Write(input []byte) error {
+	// 正常的字符输入
+	_, err := r.nextTerminal.Write(input)
+	return err
+}
+
+func (r *TermHandler) WindowChange(h int, w int) error {
+	return r.nextTerminal.WindowChange(h, w)
+}
+
+func (r *TermHandler) SendRequest() error {
+	_, _, err := r.nextTerminal.SshClient.Conn.SendRequest("helloworld1024@foxmail.com", true, nil)
+	return err
+}
+
+func (r *TermHandler) SendMessageToWebSocket(msg dto.Message) error {
+	if r.webSocket == nil {
+		return nil
+	}
+	defer r.mutex.Unlock()
+	r.mutex.Lock()
+	message := []byte(msg.ToString())
+	return r.webSocket.WriteMessage(websocket.TextMessage, message)
+}
+
+func SendObData(sessionId, s string) {
+	nextSession := session.GlobalSessionManager.GetById(sessionId)
+	if nextSession != nil && nextSession.Observer != nil {
+		nextSession.Observer.Range(func(key string, ob *session.Session) {
+			_ = ob.WriteMessage(dto.NewMessage(Data, s))
+		})
 	}
 }
 

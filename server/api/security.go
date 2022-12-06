@@ -2,16 +2,15 @@ package api
 
 import (
 	"context"
-
+	"next-terminal/server/common/maps"
 	"strconv"
 	"strings"
 
+	"github.com/labstack/echo/v4"
 	"next-terminal/server/global/security"
 	"next-terminal/server/model"
 	"next-terminal/server/repository"
 	"next-terminal/server/utils"
-
-	"github.com/labstack/echo/v4"
 )
 
 type SecurityApi struct{}
@@ -35,7 +34,7 @@ func (api SecurityApi) SecurityCreateEndpoint(c echo.Context) error {
 		Rule:     item.Rule,
 		Priority: item.Priority,
 	}
-	security.GlobalSecurityManager.Add <- rule
+	security.GlobalSecurityManager.Add(rule)
 
 	return Success(c, "")
 }
@@ -54,7 +53,7 @@ func (api SecurityApi) SecurityPagingEndpoint(c echo.Context) error {
 		return err
 	}
 
-	return Success(c, Map{
+	return Success(c, maps.Map{
 		"total": total,
 		"items": items,
 	})
@@ -72,14 +71,14 @@ func (api SecurityApi) SecurityUpdateEndpoint(c echo.Context) error {
 		return err
 	}
 	// 更新内存中的安全规则
-	security.GlobalSecurityManager.Del <- id
+	security.GlobalSecurityManager.Del(id)
 	rule := &security.Security{
 		ID:       item.ID,
 		IP:       item.IP,
 		Rule:     item.Rule,
 		Priority: item.Priority,
 	}
-	security.GlobalSecurityManager.Add <- rule
+	security.GlobalSecurityManager.Add(rule)
 
 	return Success(c, nil)
 }
@@ -94,7 +93,7 @@ func (api SecurityApi) SecurityDeleteEndpoint(c echo.Context) error {
 			return err
 		}
 		// 更新内存中的安全规则
-		security.GlobalSecurityManager.Del <- id
+		security.GlobalSecurityManager.Del(id)
 	}
 
 	return Success(c, nil)

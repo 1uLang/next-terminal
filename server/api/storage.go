@@ -8,13 +8,14 @@ import (
 	"strconv"
 	"strings"
 
-	"next-terminal/server/constant"
+	"github.com/labstack/echo/v4"
+	"next-terminal/server/common"
+	"next-terminal/server/common/maps"
+	"next-terminal/server/common/nt"
 	"next-terminal/server/model"
 	"next-terminal/server/repository"
 	"next-terminal/server/service"
 	"next-terminal/server/utils"
-
-	"github.com/labstack/echo/v4"
 )
 
 type StorageApi struct{}
@@ -44,7 +45,7 @@ func (api StorageApi) StoragePagingEndpoint(c echo.Context) error {
 		}
 	}
 
-	return Success(c, Map{
+	return Success(c, maps.Map{
 		"total": total,
 		"items": items,
 	})
@@ -59,7 +60,7 @@ func (api StorageApi) StorageCreateEndpoint(c echo.Context) error {
 	account, _ := GetCurrentAccount(c)
 
 	item.ID = utils.UUID()
-	item.Created = utils.NowJsonTime()
+	item.Created = common.NowJsonTime()
 	item.Owner = account.ID
 	// 创建对应的目录文件夹
 	drivePath := service.StorageService.GetBaseDrivePath()
@@ -147,7 +148,7 @@ func (api StorageApi) PermissionCheck(c echo.Context, id string) error {
 		return err
 	}
 	account, _ := GetCurrentAccount(c)
-	if account.Type != constant.TypeAdmin {
+	if account.Type != nt.TypeAdmin {
 		if storage.Owner != account.ID {
 			return errors.New("您没有权限访问此地址 :(")
 		}
