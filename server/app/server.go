@@ -104,7 +104,6 @@ func setupRoutes() *echo.Echo {
 		account.POST("/confirm-totp", accountApi.ConfirmTOTPEndpoint)
 		account.GET("/access-token", accountApi.AccessTokenGetEndpoint)
 		account.POST("/access-token", accountApi.AccessTokenGenEndpoint)
-
 		account.DELETE("/access-token", accountApi.AccessTokenDelEndpoint)
 	}
 

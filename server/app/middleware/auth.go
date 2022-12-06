@@ -61,6 +61,7 @@ func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 		authorization := v.(dto.Authorization)
 		if authorization.Forever { //永久token
 			if c.Request().Method != "GET" || urlCheckAuth(uri) {
+				cache.TokenManager.Set(token, authorization, cache.NoExpiration)
 				return next(c)
 			} else {
 				return api.Fail(c, 401, "您的登录信息已失效，请重新登录后再试。3")

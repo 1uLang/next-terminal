@@ -21,78 +21,6 @@ import (
 
 type AccountApi struct{}
 
-// 设置永久token
-func (api AccountApi) AuthorizeToken(c echo.Context) error {
-	var loginAccount dto.LoginAccount
-	if err := c.Bind(&loginAccount); err != nil {
-		return err
-	}
-
-	// 存储登录失败次数信息
-	loginFailCountKey := c.RealIP() + loginAccount.Username
-	v, ok := cache.LoginFailedKeyManager.Get(loginFailCountKey)
-	if !ok {
-		v = 1
-	}
-	count := v.(int)
-	if count >= 5 {
-		return Fail(c, -1, "登录失败次数过多，请等待5分钟后再试")
-	}
-
-	user, err := repository.UserRepository.FindByUsername(context.TODO(), loginAccount.Username)
-	if err != nil {
-		count++
-		cache.LoginFailedKeyManager.Set(loginFailCountKey, count, cache.LoginLockExpiration)
-		// 保存登录日志
-		if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "账号或密码不正确"); err != nil {
-			return err
-		}
-		return FailWithData(c, -1, "您输入的账号或密码不正确", count)
-	}
-
-	if user.Status == nt.StatusDisabled {
-		return Fail(c, -1, "该账户已停用")
-	}
-
-	if err := utils.Encoder.Match([]byte(user.Password), []byte(loginAccount.Password)); err != nil {
-		count++
-		cache.LoginFailedKeyManager.Set(loginFailCountKey, count, cache.LoginLockExpiration)
-		// 保存登录日志
-		if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "账号或密码不正确"); err != nil {
-			return err
-		}
-		return FailWithData(c, -1, "您输入的账号或密码不正确", count)
-	}
-
-	if user.TOTPSecret != "" && user.TOTPSecret != "-" {
-		if loginAccount.TOTP == "" {
-			return Fail(c, 100, "")
-		} else {
-			if !common.Validate(loginAccount.TOTP, user.TOTPSecret) {
-				count++
-				cache.LoginFailedKeyManager.Set(loginFailCountKey, count, cache.LoginLockExpiration)
-				// 保存登录日志
-				if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "双因素认证授权码不正确"); err != nil {
-					return err
-				}
-				return FailWithData(c, -1, "您输入双因素认证授权码不正确", count)
-			}
-		}
-	}
-
-	token, err := api.LoginSuccess(loginAccount, user, c.RealIP(), true)
-	if err != nil {
-		return err
-	}
-	// 保存登录日志
-	if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, true, loginAccount.Remember, token, "", true); err != nil {
-		return err
-	}
-
-	return Success(c, token)
-
-}
-
 func (api AccountApi) LoginEndpoint(c echo.Context) error {
 	var loginAccount dto.LoginAccount
 	if err := c.Bind(&loginAccount); err != nil {
@@ -174,7 +102,106 @@ func (api AccountApi) LoginEndpoint(c echo.Context) error {
 			menus = append(menus, items...)
 		}
 	}
-	return Success(c, token)
+
+	info := AccountInfo{
+		Id:         user.ID,
+		Username:   user.Username,
+		Nickname:   user.Nickname,
+		Type:       user.Type,
+		EnableTotp: user.TOTPSecret != "" && user.TOTPSecret != "-",
+		Roles:      user.Roles,
+		Menus:      menus,
+	}
+
+	return Success(c, maps.Map{
+		"info":  info,
+		"token": token,
+	})
+}
+
+// AuthorizeToken 设置永久token
+func (api AccountApi) AuthorizeToken(c echo.Context) error {
+	var loginAccount dto.LoginAccount
+	if err := c.Bind(&loginAccount); err != nil {
+		return err
+	}
+
+	// 存储登录失败次数信息
+	loginFailCountKey := c.RealIP() + loginAccount.Username
+	v, ok := cache.LoginFailedKeyManager.Get(loginFailCountKey)
+	if !ok {
+		v = 1
+	}
+	count := v.(int)
+	if count >= 5 {
+		return Fail(c, -1, "登录失败次数过多，请等待5分钟后再试")
+	}
+
+	user, err := repository.UserRepository.FindByUsername(context.TODO(), loginAccount.Username)
+	if err != nil {
+		count++
+		cache.LoginFailedKeyManager.Set(loginFailCountKey, count, cache.LoginLockExpiration)
+		// 保存登录日志
+		if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "账号或密码不正确"); err != nil {
+			return err
+		}
+		return FailWithData(c, -1, "您输入的账号或密码不正确", count)
+	}
+
+	if user.Status == nt.StatusDisabled {
+		return Fail(c, -1, "该账户已停用")
+	}
+
+	if err := utils.Encoder.Match([]byte(user.Password), []byte(loginAccount.Password)); err != nil {
+		count++
+		cache.LoginFailedKeyManager.Set(loginFailCountKey, count, cache.LoginLockExpiration)
+		// 保存登录日志
+		if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "账号或密码不正确"); err != nil {
+			return err
+		}
+		return FailWithData(c, -1, "您输入的账号或密码不正确", count)
+	}
+
+	// 账号密码正确，需要进行两步验证
+	if user.TOTPSecret != "" && user.TOTPSecret != "-" {
+		if loginAccount.TOTP == "" {
+			return Fail(c, 100, "")
+		} else {
+			if !common.Validate(loginAccount.TOTP, user.TOTPSecret) {
+				count++
+				cache.LoginFailedKeyManager.Set(loginFailCountKey, count, cache.LoginLockExpiration)
+				// 保存登录日志
+				if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, false, loginAccount.Remember, "", "双因素认证授权码不正确"); err != nil {
+					return err
+				}
+				return FailWithData(c, -1, "您输入双因素认证授权码不正确", count)
+			}
+		}
+	}
+
+	token, err := api.LoginSuccess(loginAccount, user, c.RealIP(), true)
+	if err != nil {
+		return err
+	}
+	// 保存登录日志
+	if err := service.UserService.SaveLoginLog(c.RealIP(), c.Request().UserAgent(), loginAccount.Username, true, loginAccount.Remember, token, ""); err != nil {
+		return err
+	}
+
+	var menus []string
+	if service.UserService.IsSuperAdmin(user.ID) {
+		menus = service.MenuService.GetMenus()
+	} else {
+		roles, err := service.RoleService.GetRolesByUserId(user.ID)
+		if err != nil {
+			return err
+		}
+		for _, role := range roles {
+			items := service.RoleService.GetMenuListByRole(role)
+			menus = append(menus, items...)
+		}
+	}
+
 	info := AccountInfo{
 		Id:         user.ID,
 		Username:   user.Username,
