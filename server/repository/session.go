@@ -212,15 +212,24 @@ func (r sessionRepository) CountWithGroupByLoginTime(c context.Context, t time.T
 	return
 }
 
-func (r sessionRepository) ListAssetIds(c context.Context, pageIndex, pageSize int, clientIp, assetId, status string, assetIds []string) (results []model.SessionForPage, total int64, err error) {
+func (r sessionRepository) ListAssetIds(c context.Context, pageIndex, pageSize int, status, userId, clientIp, assetId, protocol, reviewed string, assetIds []string) (results []model.SessionForPage, total int64, err error) {
 
 	db := r.GetDB(c)
 	var params []interface{}
 
 	params = append(params, status)
 
-	itemSql := "SELECT s.id,s.mode, s.protocol,s.recording, s.connection_id, s.asset_id, s.creator, s.client_ip, s.width, s.height, s.ip, s.port, s.username, s.status, s.connected_time, s.disconnected_time,s.code,s.reviewed, s.message, a.name AS asset_name, u.nickname AS creator_name FROM sessions s LEFT JOIN assets a ON s.asset_id = a.id LEFT JOIN users u ON s.creator = u.id WHERE s.STATUS = ? "
+	itemSql := "SELECT s.id,s.mode, s.protocol,s.recording, s.connection_id, s.asset_id, s.creator, s.client_ip, s.width, s.height, s.ip, s.port, s.username, s.status, s.connected_time, s.disconnected_time,s.code,s.reviewed, s.message,s.command_count, a.name AS asset_name, u.nickname AS creator_name FROM sessions s " +
+		"LEFT JOIN assets a ON s.asset_id = a.id " +
+		"LEFT JOIN users u ON s.creator = u.id " +
+		"WHERE s.STATUS = ? "
 	countSql := "select count(*) from sessions as s where s.status = ? "
+
+	if len(userId) > 0 {
+		itemSql += " and s.creator = ?"
+		countSql += " and s.creator = ?"
+		params = append(params, userId)
+	}
 
 	if len(clientIp) > 0 {
 		itemSql += " and s.client_ip like ?"
@@ -238,15 +247,28 @@ func (r sessionRepository) ListAssetIds(c context.Context, pageIndex, pageSize i
 		params = append(params, assetIds)
 	}
 
+	if len(protocol) > 0 {
+		itemSql += " and s.protocol = ?"
+		countSql += " and s.protocol = ?"
+		params = append(params, protocol)
+	}
+
+	if reviewed != "" {
+		bReviewed := reviewed == "true"
+		itemSql += " and s.reviewed = ?"
+		countSql += " and s.reviewed = ?"
+		params = append(params, bReviewed)
+	}
+
+	db.Raw(countSql, params...).Find(&total)
+
 	params = append(params, (pageIndex-1)*pageSize, pageSize)
 	itemSql += " order by s.connected_time desc LIMIT ?, ?"
 
-	db.Raw(countSql, params...).Scan(&total)
+	err = db.Raw(itemSql, params...).Find(&results).Error
 
-	err = db.Raw(itemSql, params...).Scan(&results).Error
 	if results == nil {
 		results = make([]model.SessionForPage, 0)
 	}
-
 	return
 }

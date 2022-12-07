@@ -614,11 +614,15 @@ func (api SessionApi) SessionStatistics(c echo.Context) error {
 func (api SessionApi) SessionListEndpoint(c echo.Context) error {
 	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
 	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
-	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
-	assetId := c.QueryParam("assetId")
 	status := c.QueryParam("status")
+	userId := c.QueryParam("userId")
 	clientIp := c.QueryParam("clientIp")
-	items, total, err := repository.SessionRepository.ListAssetIds(context.TODO(), pageIndex, pageSize, clientIp, assetId, status, assetIds)
+	assetId := c.QueryParam("assetId")
+	protocol := c.QueryParam("protocol")
+	reviewed := c.QueryParam("reviewed")
+
+	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
+	items, total, err := repository.SessionRepository.ListAssetIds(context.TODO(), pageIndex, pageSize, status, userId, clientIp, assetId, protocol, reviewed, assetIds)
 
 	if err != nil {
 		return err
