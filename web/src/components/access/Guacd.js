@@ -408,6 +408,9 @@ const Guacd = () => {
             case 802:
                 showMessage('管理员强制关闭了此会话');
                 break;
+            case 807:
+                showMessage('30分钟未操作，主动断开连接。如需继续操作，请重新连接！');
+                break;
             default:
                 if (status.message) {
                     // guacd 无法处理中文字符，所以进行了base64编码。
