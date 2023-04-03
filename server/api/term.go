@@ -7,6 +7,7 @@ import (
 	"errors"
 	"path"
 	"strconv"
+	"time"
 
 	"next-terminal/server/config"
 	"next-terminal/server/constant"
@@ -158,12 +159,30 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 	termHandler.Start()
 	defer termHandler.Stop()
 
+	// 设置定时任务 超时 主动退出
+	isClose := false
+	timer := time.NewTimer(30 * time.Minute)
+	isDoChan := make(chan bool, 1)
+	go func() {
+		for {
+			select {
+			case <-timer.C: // 超时主动退出
+				if isClose { // 已经退出
+					return
+				}
+				service.SessionService.CloseSessionById(sessionId, ForcedTimeoutDisconnect, "30分钟未操作，主动断开连接。如需继续操作，请重新连接！")
+			case <-isDoChan: // 用户正常使用
+				timer.Reset(30 * time.Minute)
+			}
+		}
+	}()
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
 			// web socket会话关闭后主动关闭ssh会话
 			log.Debugf("WebSocket已关闭")
 			service.SessionService.CloseSessionById(sessionId, Normal, "用户正常退出")
+			isClose = true
 			break
 		}
 
@@ -172,7 +191,9 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 			log.Warnf("消息解码失败: %v, 原始字符串：%v", err, string(message))
 			continue
 		}
-
+		if msg.Type != Ping {
+			isDoChan <- true
+		}
 		switch msg.Type {
 		case Resize:
 			decodeString, err := base64.StdEncoding.DecodeString(msg.Content)

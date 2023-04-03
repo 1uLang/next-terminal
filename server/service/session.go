@@ -262,7 +262,7 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 			fileSystem = "1"
 			storageId = attr[guacd.DrivePath]
 			if storageId == "" {
-				storageId = user.ID
+				storageId = asset.ID
 			}
 		} else {
 			fileSystem = "0"

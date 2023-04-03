@@ -244,10 +244,10 @@ func (service userService) CreateUser(user model.User) (err error) {
 		if err := repository.UserRepository.Create(c, &user); err != nil {
 			return err
 		}
-		err = StorageService.CreateStorageByUser(c, &user)
-		if err != nil {
-			return err
-		}
+		//err = StorageService.CreateStorageByUser(c, &user)
+		//if err != nil {
+		//	return err
+		//}
 
 		if user.Mail != "" {
 			subject := fmt.Sprintf("%s 注册通知", constant.AppName)
@@ -286,9 +286,9 @@ func (service userService) DeleteUserById(userId string) error {
 			return err
 		}
 		// 删除用户的默认磁盘空间
-		if err := StorageService.DeleteStorageById(c, userId, true); err != nil {
-			return err
-		}
+		//if err := StorageService.DeleteStorageById(c, userId, true); err != nil {
+		//	return err
+		//}
 
 		// 删除用户
 		if err := repository.UserRepository.DeleteById(c, userId); err != nil {

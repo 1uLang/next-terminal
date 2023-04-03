@@ -68,6 +68,10 @@ func (r storageRepository) FindByOwnerIdAndDefault(c context.Context, owner stri
 	err = r.GetDB(c).Where("owner = ? and is_default = ?", owner, isDefault).First(&m).Error
 	return
 }
+func (r storageRepository) FindByAssetIdAndDefault(c context.Context, owner string, isDefault bool) (m model.Storage, err error) {
+	err = r.GetDB(c).Where("owner = ? and is_default = ?", owner, isDefault).First(&m).Error
+	return
+}
 
 func (r storageRepository) FindById(c context.Context, id string) (m model.Storage, err error) {
 	err = r.GetDB(c).Where("id = ?", id).First(&m).Error

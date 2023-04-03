@@ -33,6 +33,11 @@ func (assetApi AssetApi) AssetCreateEndpoint(c echo.Context) error {
 		return err
 	}
 
+	// 创建默认的storage
+	err = service.StorageService.CreateStorageByAsset(context.TODO(), &item)
+	if err != nil {
+		return err
+	}
 	return Success(c, item)
 }
 
@@ -98,6 +103,8 @@ func (assetApi AssetApi) AssetImportEndpoint(c echo.Context) error {
 				m[strconv.Itoa(i)] = err.Error()
 			} else {
 				successCount++
+				// 创建默认的storage
+				_ = service.StorageService.CreateStorageByAsset(context.TODO(), &asset)
 			}
 		}
 	}

@@ -203,6 +203,10 @@ func (s assetService) DeleteById(id string) error {
 		if err := repository.ResourceSharerRepository.DeleteByResourceId(c, id); err != nil {
 			return err
 		}
+		// 删除用户的默认磁盘空间
+		if err := StorageService.DeleteStorageById(c, id, true); err != nil {
+			return err
+		}
 		return nil
 	})
 }
