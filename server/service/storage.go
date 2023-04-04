@@ -57,6 +57,7 @@ func (service storageService) InitStorages() error {
 				if err := service.DeleteStorageById(context.TODO(), storage.ID, true); err != nil {
 					return err
 				}
+				continue
 			}
 		}
 		storageDir := path.Join(drivePath, storage.ID)
@@ -125,29 +126,26 @@ func (service storageService) CreateStorageByAsset(c context.Context, asset *mod
 	if limitSize < 0 {
 		limitSize = -1
 	}
-	tags := strings.Split(asset.Tags, ",")
-	for _, tag := range tags {
-		uuid := strings.TrimPrefix(tag, "user_")
-		storage := model.Storage{
-			ID:        uuid,
-			Name:      asset.ID + " 的默认空间",
-			IsShare:   false,
-			IsDefault: true,
-			LimitSize: limitSize,
-			Owner:     asset.ID,
-			Created:   utils.NowJsonTime(),
-		}
-		storageDir := path.Join(drivePath, storage.ID)
-		if err := os.MkdirAll(storageDir, os.ModePerm); err != nil {
-			return err
-		}
-		log.Infof("创建storage:「%v」文件夹: %v", storage.Name, storageDir)
-		err = repository.StorageRepository.Create(c, &storage)
-		if err != nil {
-			_ = os.RemoveAll(storageDir)
-			return err
-		}
+	storage := model.Storage{
+		ID:        asset.ID,
+		Name:      asset.ID + " 的默认空间",
+		IsShare:   false,
+		IsDefault: true,
+		LimitSize: limitSize,
+		Owner:     asset.ID,
+		Created:   utils.NowJsonTime(),
 	}
+	storageDir := path.Join(drivePath, storage.ID)
+	if err := os.MkdirAll(storageDir, os.ModePerm); err != nil {
+		return err
+	}
+	log.Infof("创建storage:「%v」文件夹: %v", storage.Name, storageDir)
+	err = repository.StorageRepository.Create(c, &storage)
+	if err != nil {
+		_ = os.RemoveAll(storageDir)
+		return err
+	}
+
 	return nil
 }
 
