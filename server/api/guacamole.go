@@ -215,8 +215,8 @@ func (api GuacamoleApi) setAssetConfig(attributes map[string]string, s model.Ses
 		if guacd.EnableDrive == key && value == "true" {
 			storageId := attributes[guacd.DrivePath]
 			if storageId == "" || storageId == "-" {
-				// 默认空间ID和用户ID相同
-				storageId = s.Creator
+				// 默认空间ID和资产ID相同
+				storageId = s.AssetId
 			}
 			realPath := path.Join(service.StorageService.GetBaseDrivePath(), storageId)
 			configuration.SetParameter(guacd.EnableDrive, "true")
