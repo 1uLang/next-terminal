@@ -276,11 +276,17 @@ func (assetApi AssetApi) PreCheckAssetPermission(c echo.Context, id string) erro
 
 func (assetApi AssetApi) AssetGetConnectCountEndpoint(c echo.Context) (err error) {
 	tags := c.QueryParam("tags")
-
-	ids, err := repository.AssetRepository.FindIdsByTags(context.TODO(), tags)
-	if err != nil {
-		return err
+	id := c.QueryParam("id")
+	ids := []string{}
+	if id == "" {
+		ids, err = repository.AssetRepository.FindIdsByTags(context.TODO(), tags)
+		if err != nil {
+			return err
+		}
+	} else {
+		ids = append(ids, id)
 	}
+
 	count, err := repository.SessionRepository.AssetConnectNum(context.TODO(), ids...)
 	if err != nil {
 		return err
