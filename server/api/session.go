@@ -168,6 +168,7 @@ func (api SessionApi) SessionResizeEndpoint(c echo.Context) error {
 
 func (api SessionApi) SessionCreateEndpoint(c echo.Context) error {
 	assetId := c.QueryParam("assetId")
+	certId := c.QueryParam("certId")
 	mode := c.QueryParam("mode")
 
 	if mode == constant.Native {
@@ -178,7 +179,7 @@ func (api SessionApi) SessionCreateEndpoint(c echo.Context) error {
 
 	user, _ := GetCurrentAccount(c)
 
-	s, err := service.SessionService.Create(c.RealIP(), assetId, mode, user)
+	s, err := service.SessionService.Create(c.RealIP(), assetId, certId, mode, user)
 	if err != nil {
 		return err
 	}

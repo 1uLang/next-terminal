@@ -207,7 +207,7 @@ func (service sessionService) Decrypt(item *model.Session) error {
 	return nil
 }
 
-func (service sessionService) Create(clientIp, assetId, mode string, user *model.User) (*model.Session, error) {
+func (service sessionService) Create(clientIp, assetId, certId, mode string, user *model.User) (*model.Session, error) {
 	asset, err := repository.AssetRepository.FindById(context.TODO(), assetId)
 	if err != nil {
 		return nil, err
@@ -327,6 +327,19 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 		if err != nil {
 			return nil, err
 		}
+
+		if credential.Type == constant.Custom {
+			s.Username = credential.Username
+			s.Password = credential.Password
+		} else {
+			s.Username = credential.Username
+			s.PrivateKey = credential.PrivateKey
+			s.Passphrase = credential.Passphrase
+		}
+	}
+	//判断是否设置了登录的凭证 如果是则以该凭证的账号去登录
+	credential, err := repository.CredentialRepository.FindById(context.TODO(), certId)
+	if certId != "" && err == nil {
 
 		if credential.Type == constant.Custom {
 			s.Username = credential.Username

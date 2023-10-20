@@ -11,13 +11,13 @@ import (
 )
 
 type GuacamoleHandler struct {
-	ws     *websocket.Conn
+	ws     *utils.WebSocketConn
 	tunnel *guacd.Tunnel
 	ctx    context.Context
 	cancel context.CancelFunc
 }
 
-func NewGuacamoleHandler(ws *websocket.Conn, tunnel *guacd.Tunnel) *GuacamoleHandler {
+func NewGuacamoleHandler(ws *utils.WebSocketConn, tunnel *guacd.Tunnel) *GuacamoleHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &GuacamoleHandler{
 		ws:     ws,
@@ -42,7 +42,9 @@ func (r GuacamoleHandler) Start() {
 				if len(instruction) == 0 {
 					continue
 				}
-				err = r.ws.WriteMessage(websocket.TextMessage, instruction)
+				r.ws.Locker.Lock()
+				err = r.ws.Ws.WriteMessage(websocket.TextMessage, instruction)
+				r.ws.Locker.Unlock()
 				if err != nil {
 					log.Debugf("WebSocket写入失败，即将关闭Guacd连接...")
 					return

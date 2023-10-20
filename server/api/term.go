@@ -37,14 +37,15 @@ type WebTerminalApi struct {
 }
 
 func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
-	ws, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
+	wsocket, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {
 		log.Errorf("升级为WebSocket协议失败：%v", err.Error())
 		return err
 	}
+	ws := utils.NewWebSocketConn(wsocket)
 
 	defer func() {
-		_ = ws.Close()
+		_ = ws.Ws.Close()
 	}()
 	ctx := context.TODO()
 
@@ -177,7 +178,7 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 		}
 	}()
 	for {
-		_, message, err := ws.ReadMessage()
+		_, message, err := ws.Ws.ReadMessage()
 		if err != nil {
 			// web socket会话关闭后主动关闭ssh会话
 			log.Debugf("WebSocket已关闭")
@@ -231,14 +232,15 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 }
 
 func (api WebTerminalApi) SshMonitorEndpoint(c echo.Context) error {
-	ws, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
+	wsocket, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {
 		log.Errorf("升级为WebSocket协议失败：%v", err.Error())
 		return err
 	}
+	ws := utils.NewWebSocketConn(wsocket)
 
 	defer func() {
-		_ = ws.Close()
+		_ = ws.Ws.Close()
 	}()
 	ctx := context.TODO()
 
@@ -264,7 +266,7 @@ func (api WebTerminalApi) SshMonitorEndpoint(c echo.Context) error {
 	log.Debugf("会话 %v 观察者 %v 进入", sessionId, obId)
 
 	for {
-		_, _, err := ws.ReadMessage()
+		_, _, err := ws.Ws.ReadMessage()
 		if err != nil {
 			log.Debugf("会话 %v 观察者 %v 退出", sessionId, obId)
 			nextSession.Observer.Del <- obId
@@ -290,9 +292,11 @@ func (api WebTerminalApi) permissionCheck(c echo.Context, assetId string) error 
 	return nil
 }
 
-func WriteMessage(ws *websocket.Conn, msg dto.Message) error {
+func WriteMessage(ws *utils.WebSocketConn, msg dto.Message) error {
 	message := []byte(msg.ToString())
-	return ws.WriteMessage(websocket.TextMessage, message)
+	ws.Locker.Lock()
+	defer ws.Locker.Unlock()
+	return ws.Ws.WriteMessage(websocket.TextMessage, message)
 }
 
 func CreateNextTerminalBySession(session model.Session) (*term.NextTerminal, error) {

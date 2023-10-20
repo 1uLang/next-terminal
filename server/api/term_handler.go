@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"next-terminal/server/utils"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -16,7 +17,7 @@ import (
 type TermHandler struct {
 	sessionId    string
 	isRecording  bool
-	webSocket    *websocket.Conn
+	webSocket    *utils.WebSocketConn
 	nextTerminal *term.NextTerminal
 	ctx          context.Context
 	cancel       context.CancelFunc
@@ -25,7 +26,7 @@ type TermHandler struct {
 	mutex        sync.Mutex
 }
 
-func NewTermHandler(sessionId string, isRecording bool, ws *websocket.Conn, nextTerminal *term.NextTerminal) *TermHandler {
+func NewTermHandler(sessionId string, isRecording bool, ws *utils.WebSocketConn, nextTerminal *term.NextTerminal) *TermHandler {
 	ctx, cancel := context.WithCancel(context.Background())
 	tick := time.NewTicker(time.Millisecond * time.Duration(60))
 	return &TermHandler{
@@ -112,5 +113,7 @@ func (r *TermHandler) WriteMessage(msg dto.Message) error {
 	defer r.mutex.Unlock()
 	r.mutex.Lock()
 	message := []byte(msg.ToString())
-	return r.webSocket.WriteMessage(websocket.TextMessage, message)
+	r.webSocket.Locker.Lock()
+	defer r.webSocket.Locker.Unlock()
+	return r.webSocket.Ws.WriteMessage(websocket.TextMessage, message)
 }

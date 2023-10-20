@@ -2,6 +2,7 @@ package session
 
 import (
 	"fmt"
+	"next-terminal/server/utils"
 	"sync"
 
 	"next-terminal/server/dto"
@@ -15,7 +16,7 @@ type Session struct {
 	ID           string
 	Protocol     string
 	Mode         string
-	WebSocket    *websocket.Conn
+	WebSocket    *utils.WebSocketConn
 	GuacdTunnel  *guacd.Tunnel
 	NextTerminal *term.NextTerminal
 	Observer     *Manager
@@ -29,7 +30,10 @@ func (s *Session) WriteMessage(msg dto.Message) error {
 	defer s.mutex.Unlock()
 	s.mutex.Lock()
 	message := []byte(msg.ToString())
-	return s.WebSocket.WriteMessage(websocket.TextMessage, message)
+	s.WebSocket.Locker.Lock()
+	err := s.WebSocket.Ws.WriteMessage(websocket.TextMessage, message)
+	s.WebSocket.Locker.Unlock()
+	return err
 }
 
 func (s *Session) WriteString(str string) error {
@@ -39,7 +43,10 @@ func (s *Session) WriteString(str string) error {
 	defer s.mutex.Unlock()
 	s.mutex.Lock()
 	message := []byte(str)
-	return s.WebSocket.WriteMessage(websocket.TextMessage, message)
+	s.WebSocket.Locker.Lock()
+	err := s.WebSocket.Ws.WriteMessage(websocket.TextMessage, message)
+	s.WebSocket.Locker.Unlock()
+	return err
 }
 
 type Manager struct {
@@ -88,7 +95,7 @@ func (m *Manager) Start() {
 				}
 
 				if ss.WebSocket != nil {
-					_ = ss.WebSocket.Close()
+					_ = ss.WebSocket.Ws.Close()
 				}
 				if ss.Observer != nil {
 					ss.Observer.Close()

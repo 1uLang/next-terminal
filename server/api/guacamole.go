@@ -46,11 +46,12 @@ type GuacamoleApi struct {
 }
 
 func (api GuacamoleApi) Guacamole(c echo.Context) error {
-	ws, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
+	wsocket, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {
 		log.Errorf("升级为WebSocket协议失败：%v", err.Error())
 		return err
 	}
+	ws := utils.NewWebSocketConn(wsocket)
 	ctx := context.TODO()
 	width := c.QueryParam("width")
 	height := c.QueryParam("height")
@@ -182,7 +183,7 @@ func (api GuacamoleApi) Guacamole(c echo.Context) error {
 		}
 	}()
 	for {
-		_, message, err := ws.ReadMessage()
+		_, message, err := ws.Ws.ReadMessage()
 		if err != nil {
 			isClose = true
 			log.Debugf("[%v] WebSocket已关闭, %v", sessionId, err.Error())
@@ -254,11 +255,12 @@ func (api GuacamoleApi) CheckMonitor(sessionId string) error {
 
 }
 func (api GuacamoleApi) GuacamoleMonitor(c echo.Context) error {
-	ws, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
+	wsocket, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {
 		log.Errorf("升级为WebSocket协议失败：%v", err.Error())
 		return err
 	}
+	ws := utils.NewWebSocketConn(wsocket)
 	ctx := context.TODO()
 	sessionId := c.Param("id")
 
@@ -312,7 +314,7 @@ func (api GuacamoleApi) GuacamoleMonitor(c echo.Context) error {
 	defer guacamoleHandler.Stop()
 
 	for {
-		_, message, err := ws.ReadMessage()
+		_, message, err := ws.Ws.ReadMessage()
 		if err != nil {
 			log.Debugf("[%v:%v] WebSocket已关闭, %v", sessionId, connectionId, err.Error())
 			// guacdTunnel.Read() 会阻塞，所以要先把guacdTunnel客户端关闭，才能退出Guacd循环
