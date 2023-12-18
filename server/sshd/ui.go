@@ -151,7 +151,7 @@ func (gui Gui) createSession(sess ssh.Session, assetId, creator string) (err err
 		Download:        "0",
 		Delete:          "0",
 		Rename:          "0",
-		StorageId:       "",
+		StorageId:       assetId,
 		AccessGatewayId: asset.AccessGatewayId,
 	}
 

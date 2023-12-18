@@ -185,3 +185,24 @@ func (api CredentialApi) CredentialChangeOwnerEndpoint(c echo.Context) error {
 	}
 	return Success(c, "")
 }
+
+func (api CredentialApi) CredentialListEndpoint(c echo.Context) error {
+	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
+	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
+	name := c.QueryParam("name")
+	ids := strings.Split(c.QueryParam("ids"), ",")
+
+	order := c.QueryParam("order")
+	field := c.QueryParam("field")
+
+	account, _ := GetCurrentAccount(c)
+	items, total, err := repository.CredentialRepository.List(context.TODO(), pageIndex, pageSize, name, order, field, ids, account)
+	if err != nil {
+		return err
+	}
+
+	return Success(c, maps.Map{
+		"total": total,
+		"items": items,
+	})
+}

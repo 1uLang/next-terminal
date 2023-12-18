@@ -30,15 +30,16 @@ type storageService struct {
 }
 
 func (service storageService) InitStorages() error {
-	users, err := repository.UserRepository.FindAll(context.TODO())
+	assets, err := repository.AssetRepository.FindAll(context.TODO())
 	if err != nil {
 		return err
 	}
-	for i := range users {
-		userId := users[i].ID
-		_, err := repository.StorageRepository.FindByOwnerIdAndDefault(context.TODO(), userId, true)
+	assetMaps := make(map[string]bool, len(assets))
+	for _, asset := range assets {
+		assetMaps[asset.ID] = true
+		_, err := repository.StorageRepository.FindByOwnerIdAndDefault(context.TODO(), asset.ID, true)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			err = service.CreateStorageByUser(context.TODO(), &users[i])
+			err = service.CreateStorageByAsset(context.TODO(), &asset)
 			if err != nil {
 				return err
 			}
@@ -52,23 +53,14 @@ func (service storageService) InitStorages() error {
 	}
 	for i := 0; i < len(storages); i++ {
 		storage := storages[i]
-		// 判断是否为遗留的数据：磁盘空间在，但用户已删除
+		// 判断是否为遗留的数据：磁盘空间在，但资产已删除
 		if storage.IsDefault {
-			var userExist = false
-			for j := range users {
-				if storage.ID == users[j].ID {
-					userExist = true
-					break
-				}
-			}
-
-			if !userExist {
+			if _, assetExist := assetMaps[storage.ID]; !assetExist {
 				if err := service.DeleteStorageById(context.TODO(), storage.ID, true); err != nil {
 					return err
 				}
 			}
 		}
-
 		storageDir := path.Join(drivePath, storage.ID)
 		if !utils.FileExists(storageDir) {
 			if err := os.MkdirAll(storageDir, os.ModePerm); err != nil {
@@ -79,6 +71,43 @@ func (service storageService) InitStorages() error {
 	return nil
 }
 
+func (service storageService) CreateStorageByAsset(c context.Context, asset *model.Asset) error {
+	drivePath := service.GetBaseDrivePath()
+	var limitSize int64
+	property, err := repository.PropertyRepository.FindByName(c, "user-default-storage-size")
+	if err != nil {
+		return err
+	}
+	limitSize, err = strconv.ParseInt(property.Value, 10, 64)
+	if err != nil {
+		return err
+	}
+
+	limitSize = limitSize * 1024 * 1024
+	if limitSize < 0 {
+		limitSize = -1
+	}
+	storage := model.Storage{
+		ID:        asset.ID,
+		Name:      asset.ID + " 的默认空间",
+		IsShare:   false,
+		IsDefault: true,
+		LimitSize: limitSize,
+		Owner:     asset.ID,
+		Created:   common.NowJsonTime(),
+	}
+	storageDir := path.Join(drivePath, storage.ID)
+	if err := os.MkdirAll(storageDir, os.ModePerm); err != nil {
+		return err
+	}
+	err = repository.StorageRepository.Create(c, &storage)
+	if err != nil {
+		_ = os.RemoveAll(storageDir)
+		return err
+	}
+
+	return nil
+}
 func (service storageService) CreateStorageByUser(c context.Context, user *model.User) error {
 	drivePath := service.GetBaseDrivePath()
 	var limitSize int64
@@ -219,7 +248,6 @@ func (service storageService) StorageUpload(c echo.Context, file *multipart.File
 		return err
 	}
 	defer dst.Close()
-
 	// Copy
 	if _, err = io.Copy(dst, src); err != nil {
 		return err
@@ -237,8 +265,8 @@ func (service storageService) StorageEdit(file string, fileContent string, stora
 	if err != nil {
 		return err
 	}
-	defer dstFile.Close()
 	write := bufio.NewWriter(dstFile)
+	defer dstFile.Close()
 	if _, err := write.WriteString(fileContent); err != nil {
 		return err
 	}

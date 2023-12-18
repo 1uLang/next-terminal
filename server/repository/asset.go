@@ -370,3 +370,40 @@ func (r assetRepository) UpdateLastAccessTime(ctx context.Context, assetId strin
 	asset := &model.Asset{ID: assetId, LastAccessTime: now}
 	return r.GetDB(ctx).Table("assets").Updates(asset).Error
 }
+
+func (r assetRepository) BatchUpdate(c context.Context, ids []string, username, password, credentialId, accountType string) error {
+	if accountType == "credential" {
+		sql := "update assets set credential_id = ?,account_type = ? where id in ?"
+		return r.GetDB(c).Exec(sql, credentialId, accountType, ids).Error
+	} else if accountType == "custom" {
+		sql := "update assets set username = ?,password = ?,account_type = ? where id in ?"
+		return r.GetDB(c).Exec(sql, username, password, accountType, ids).Error
+	} else {
+		return fmt.Errorf("not exists account type")
+	}
+}
+
+func (r assetRepository) FindIdsByTags(c context.Context, tags string) (ids []string, err error) {
+	var o []struct {
+		Id string `json:"id"`
+	}
+	db := r.GetDB(c).Table("assets").Select("assets.id,assets.tags")
+
+	if len(tags) > 0 {
+		tagArr := strings.Split(tags, ",")
+		for i := range tagArr {
+			if config.GlobalCfg.DB == "sqlite" {
+				db = db.Where("(',' || assets.tags || ',') LIKE ?", "%,"+tagArr[i]+",%")
+			} else {
+				db = db.Where("find_in_set(?, assets.tags)", tagArr[i])
+			}
+		}
+	}
+
+	err = db.Find(&o).Error
+
+	for _, v := range o {
+		ids = append(ids, v.Id)
+	}
+	return
+}

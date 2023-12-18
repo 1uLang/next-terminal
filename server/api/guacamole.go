@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"net/url"
 	"next-terminal/server/common/guacamole"
 	"next-terminal/server/common/nt"
 	"path"
 	"strconv"
+	"time"
 
 	"next-terminal/server/config"
 	"next-terminal/server/global/session"
@@ -31,6 +33,7 @@ const (
 	AccessGatewayCreateError int = 804
 	AssetNotActive           int = 805
 	NewSshClientError        int = 806
+	ForcedTimeoutDisconnect  int = 807
 )
 
 var UpGrader = websocket.Upgrader{
@@ -167,9 +170,27 @@ func (api GuacamoleApi) Guacamole(c echo.Context) error {
 	guacamoleHandler.Start()
 	defer guacamoleHandler.Stop()
 
+	// 设置定时任务 超时 主动退出
+	isClose := false
+	timer := time.NewTimer(30 * time.Minute)
+	isDoChan := make(chan bool, 1)
+	go func() {
+		for {
+			select {
+			case <-timer.C: // 超时主动退出
+				if isClose { // 已经退出
+					return
+				}
+				service.SessionService.CloseSessionById(sessionId, ForcedTimeoutDisconnect, "30分钟未操作，主动断开连接。如需继续操作，请重新连接！")
+			case <-isDoChan: // 用户正常使用
+				timer.Reset(30 * time.Minute)
+			}
+		}
+	}()
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
+			isClose = true
 			log.Debug("WebSocket已关闭", log.String("sessionId", sessionId), log.NamedError("err", err))
 			// guacdTunnel.Read() 会阻塞，所以要先把guacdTunnel客户端关闭，才能退出Guacd循环
 			_ = guacdTunnel.Close()
@@ -177,8 +198,14 @@ func (api GuacamoleApi) Guacamole(c echo.Context) error {
 			service.SessionService.CloseSessionById(sessionId, Normal, "用户正常退出")
 			return nil
 		}
+		// 5.mouse 鼠标在动
+		// 3.key 键盘输入
+		if (len(message) > 7 && string(message[:7]) == "5.mouse") || (len(message) > 5 && string(message[:5]) == "3.key") {
+			isDoChan <- true
+		}
 		_, err = guacdTunnel.WriteAndFlush(message)
 		if err != nil {
+			isClose = true
 			service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
 			return nil
 		}
@@ -194,8 +221,8 @@ func (api GuacamoleApi) setAssetConfig(attributes map[string]string, s model.Ses
 		if guacamole.EnableDrive == key && value == "true" {
 			storageId := attributes[guacamole.DrivePath]
 			if storageId == "" || storageId == "-" {
-				// 默认空间ID和用户ID相同
-				storageId = s.Creator
+				// 默认空间ID和资产ID相同
+				storageId = s.AssetId
 			}
 			realPath := path.Join(service.StorageService.GetBaseDrivePath(), storageId)
 			configuration.SetParameter(guacamole.EnableDrive, "true")
@@ -205,6 +232,31 @@ func (api GuacamoleApi) setAssetConfig(attributes map[string]string, s model.Ses
 			configuration.SetParameter(key, value)
 		}
 	}
+}
+
+// CheckMonitor 监控检测，当检测到用户30分钟内都没有操作时，主动端口连接
+func (api GuacamoleApi) CheckMonitor(sessionId string) error {
+
+	//todo ： 通过ws 调用监控接口，读取message 长度， 19 27 为正常长度。 超过该长度 存在用户输入。 超过30分钟都没有超过这个长度则认为超时 主动断开连接
+	// nginx 设置免登录地址
+	u := url.URL{Scheme: "ws", Host: "127.0.0.1:8081", Path: ""}
+	u.Path = fmt.Sprintf("sessions/%s/tunnel-monitor", sessionId)
+
+	c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+
+	for {
+		_, message, err := c.ReadMessage()
+		if err != nil {
+			fmt.Println("read:", err)
+			return err
+		}
+		fmt.Printf("recv: %s\n", message)
+	}
+
 }
 
 func (api GuacamoleApi) GuacamoleMonitor(c echo.Context) error {

@@ -599,3 +599,58 @@ func (api SessionApi) SessionStatsEndpoint(c echo.Context) error {
 	}
 	return Success(c, stats)
 }
+
+// SessionStatistics 会话统计 连接次数，连接时长
+func (api SessionApi) SessionStatistics(c echo.Context) error {
+	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
+
+	count, duration, err := repository.SessionRepository.Statistics(context.TODO(), assetIds)
+
+	if err != nil {
+		return err
+	}
+
+	return Success(c, maps.Map{
+		"count":    count,
+		"duration": duration,
+	})
+}
+
+func (api SessionApi) SessionListEndpoint(c echo.Context) error {
+	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
+	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
+	assetIds := strings.Split(c.QueryParam("assetIds"), ",")
+	assetId := c.QueryParam("assetId")
+	status := c.QueryParam("status")
+	clientIp := c.QueryParam("clientIp")
+	items, total, err := repository.SessionRepository.ListAssetIds(context.TODO(), pageIndex, pageSize, clientIp, assetId, status, assetIds)
+
+	if err != nil {
+		return err
+	}
+
+	for i := 0; i < len(items); i++ {
+		if status == nt.Disconnected && len(items[i].Recording) > 0 {
+
+			var recording string
+			if items[i].Mode == nt.Native || items[i].Mode == nt.Terminal {
+				recording = items[i].Recording
+			} else {
+				recording = items[i].Recording + "/recording"
+			}
+
+			if utils.FileExists(recording) {
+				items[i].Recording = "1"
+			} else {
+				items[i].Recording = "0"
+			}
+		} else {
+			items[i].Recording = "0"
+		}
+	}
+
+	return Success(c, maps.Map{
+		"total": total,
+		"items": items,
+	})
+}

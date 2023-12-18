@@ -121,6 +121,9 @@ func (service userService) LogoutByToken(token string) (err error) {
 		return err
 	}
 
+	if loginLog.Forever {
+		return nil
+	}
 	loginLogForUpdate := &model.LoginLog{LogoutTime: common.NowJsonTime(), ID: token}
 	err = repository.LoginLogRepository.Update(context.TODO(), loginLogForUpdate)
 	if err != nil {
@@ -217,14 +220,19 @@ func (service userService) ReloadToken() error {
 			Token:    token,
 			Type:     nt.LoginToken,
 			Remember: loginLog.Remember,
+			Forever:  loginLog.Forever,
 			User:     &user,
 		}
 
-		if authorization.Remember {
-			// 记住登录有效期两周
-			cache.TokenManager.Set(token, authorization, cache.RememberMeExpiration)
+		if authorization.Forever {
+			cache.TokenManager.Set(token, authorization, cache.NoExpiration)
 		} else {
-			cache.TokenManager.Set(token, authorization, cache.NotRememberExpiration)
+			if authorization.Remember {
+				// 记住登录有效期两周
+				cache.TokenManager.Set(token, authorization, cache.RememberMeExpiration)
+			} else {
+				cache.TokenManager.Set(token, authorization, cache.NotRememberExpiration)
+			}
 		}
 		log.Debug("重新加载用户授权Token", log.String("username", user.Nickname), log.String("token", token))
 	}
@@ -259,9 +267,9 @@ func (service userService) CreateUser(user model.User) (err error) {
 		if err := service.saveUserRoles(c, user); err != nil {
 			return err
 		}
-		if err := StorageService.CreateStorageByUser(c, &user); err != nil {
-			return err
-		}
+		//if err := StorageService.CreateStorageByUser(c, &user); err != nil {
+		//	return err
+		//}
 
 		if user.Mail != "" {
 			subject := fmt.Sprintf("%s 注册通知", branding.Name)
@@ -356,7 +364,7 @@ func (service userService) DeleteLoginLogs(tokens []string) error {
 	return nil
 }
 
-func (service userService) SaveLoginLog(clientIP, clientUserAgent string, username string, success, remember bool, id, reason string) error {
+func (service userService) SaveLoginLog(clientIP, clientUserAgent string, username string, success, remember bool, id, reason string, forever ...bool) error {
 	loginLog := model.LoginLog{
 		Username:        username,
 		ClientIP:        clientIP,
@@ -364,6 +372,7 @@ func (service userService) SaveLoginLog(clientIP, clientUserAgent string, userna
 		LoginTime:       common.NowJsonTime(),
 		Reason:          reason,
 		Remember:        remember,
+		Forever:         len(forever) > 0 && forever[0],
 	}
 	if success {
 		loginLog.State = "1"

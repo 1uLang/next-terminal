@@ -75,3 +75,48 @@ func (r gatewayRepository) FindAll(c context.Context) (o []model.AccessGateway, 
 	err = r.GetDB(c).Find(&o).Error
 	return
 }
+
+func (r gatewayRepository) List(c context.Context, pageIndex, pageSize int, ip, name string, ids []string, order, field string) (o []model.AccessGatewayForPage, total int64, err error) {
+	t := model.AccessGateway{}
+	db := r.GetDB(c).Table(t.TableName())
+	dbCounter := r.GetDB(c).Table(t.TableName())
+
+	if len(ip) > 0 {
+		db = db.Where("ip like ?", "%"+ip+"%")
+		dbCounter = dbCounter.Where("ip like ?", "%"+ip+"%")
+	}
+	if len(ids) > 0 {
+		db = db.Where("id in ?", ids)
+		dbCounter = dbCounter.Where("id in ?", ids)
+	}
+
+	if len(name) > 0 {
+		db = db.Where("name like ?", "%"+name+"%")
+		dbCounter = dbCounter.Where("name like ?", "%"+name+"%")
+	}
+
+	err = dbCounter.Count(&total).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if order == "descend" {
+		order = "desc"
+	} else {
+		order = "asc"
+	}
+
+	if field == "ip" {
+		field = "ip"
+	} else if field == "name" {
+		field = "name"
+	} else {
+		field = "created"
+	}
+
+	err = db.Order(field + " " + order).Find(&o).Offset((pageIndex - 1) * pageSize).Limit(pageSize).Error
+	if o == nil {
+		o = make([]model.AccessGatewayForPage, 0)
+	}
+	return
+}

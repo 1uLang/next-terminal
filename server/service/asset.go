@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"github.com/labstack/echo/v4"
 	"golang.org/x/net/proxy"
 	"net"
 	"next-terminal/server/common/maps"
@@ -218,6 +219,10 @@ func (s assetService) DeleteById(id string) error {
 		if err := repository.AuthorisedRepository.DeleteByAssetId(c, id); err != nil {
 			return err
 		}
+		// 删除用户的默认磁盘空间
+		if err := StorageService.DeleteStorageById(c, id, true); err != nil {
+			return err
+		}
 		return nil
 	})
 }
@@ -288,4 +293,30 @@ func (s assetService) UpdateById(id string, m maps.Map) error {
 
 func (s assetService) FixSshMode() error {
 	return repository.AssetRepository.UpdateAttrs(context.TODO(), "ssh-mode", "naive", nt.Native)
+}
+
+func (s assetService) BatchUpdate(m echo.Map) error {
+	data, _ := json.Marshal(m)
+	var item struct {
+		AccountType  string   `json:"accountType" `  //账号类型 下拉框 id
+		Ids          []string `json:"ids"`           //资产ID
+		Username     string   `json:"username" `     //授权账户
+		Password     string   `json:"password" `     //新密码
+		CredentialId string   `json:"credentialId" ` //授权凭证ID
+	}
+	if err := json.Unmarshal(data, &item); err != nil {
+		return err
+	}
+
+	if item.Password != "" && item.Password != "-" {
+		encryptedCBC, err := utils.AesEncryptCBC([]byte(item.Password), config.GlobalCfg.EncryptionPassword)
+		if err != nil {
+			return err
+		}
+		item.Password = base64.StdEncoding.EncodeToString(encryptedCBC)
+	}
+	if err := repository.AssetRepository.BatchUpdate(context.TODO(), item.Ids, item.Username, item.Password, item.CredentialId, item.AccountType); err != nil {
+		return err
+	}
+	return nil
 }

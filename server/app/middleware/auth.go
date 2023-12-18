@@ -13,7 +13,7 @@ import (
 	"github.com/ucarion/urlpath"
 )
 
-var anonymousUrls = []string{"/login", "/static", "/favicon.ico", "/logo.svg", "/branding"}
+var anonymousUrls = []string{"/login", "/static", "/favicon.ico", "/logo.svg", "/asciinema", "/authorize-token"}
 
 var allowUrls = []urlpath.Path{
 	urlpath.New("/account/info"),
@@ -59,16 +59,23 @@ func Auth(next echo.HandlerFunc) echo.HandlerFunc {
 		}
 
 		authorization := v.(dto.Authorization)
-
-		if strings.EqualFold(nt.LoginToken, authorization.Type) {
-			if authorization.Remember {
-				// 记住登录有效期两周
-				cache.TokenManager.Set(token, authorization, cache.RememberMeExpiration)
+		//只支持部分get接口
+		if authorization.Forever { //永久token
+			if c.Request().Method != "GET" || urlCheckAuth(uri) {
+				return next(c)
 			} else {
-				cache.TokenManager.Set(token, authorization, cache.NotRememberExpiration)
+				return api.Fail(c, 401, "您的登录信息已失效，请重新登录后再试。")
+			}
+		} else {
+			if strings.EqualFold(nt.LoginToken, authorization.Type) {
+				if authorization.Remember {
+					// 记住登录有效期两周
+					cache.TokenManager.Set(token, authorization, cache.RememberMeExpiration)
+				} else {
+					cache.TokenManager.Set(token, authorization, cache.NotRememberExpiration)
+				}
 			}
 		}
-
 		if strings.HasPrefix(uri, "/account") {
 			return next(c)
 		}
@@ -135,4 +142,23 @@ func Admin(next echo.HandlerFunc) echo.HandlerFunc {
 
 		return next(c)
 	}
+}
+
+func urlCheckAuth(uri string) bool {
+	auths := map[string]bool{
+		"/assets/":         true,
+		"/account/info":    true,
+		"/access-gateways": true,
+		"/credentials/":    true,
+		"/sessions/":       true,
+		"/tunnel":          true,
+		"/info":            true,
+		"/commands":        true,
+	}
+	for url := range auths {
+		if strings.HasPrefix(uri, url) {
+			return true
+		}
+	}
+	return false
 }

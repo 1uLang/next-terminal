@@ -287,7 +287,7 @@ func (service sessionService) Create(clientIp, assetId, mode string, user *model
 			fileSystem = "1"
 			storageId = attr[guacamole.DrivePath]
 			if storageId == "" {
-				storageId = user.ID
+				storageId = asset.ID
 			}
 		} else {
 			fileSystem = "0"

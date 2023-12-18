@@ -29,10 +29,28 @@ func (assetApi AssetApi) AssetCreateEndpoint(c echo.Context) error {
 	account, _ := GetCurrentAccount(c)
 	m["owner"] = account.ID
 
-	if _, err := service.AssetService.Create(context.TODO(), m); err != nil {
+	item, err := service.AssetService.Create(context.TODO(), m)
+	if err != nil {
 		return err
 	}
 
+	// 创建默认的storage
+	err = service.StorageService.CreateStorageByAsset(context.TODO(), item)
+	if err != nil {
+		return err
+	}
+	return Success(c, nil)
+}
+
+func (assetApi AssetApi) AssetBatchUpdateEndpoint(c echo.Context) error {
+
+	m := echo.Map{}
+	if err := c.Bind(&m); err != nil {
+		return err
+	}
+	if err := service.AssetService.BatchUpdate(m); err != nil {
+		return err
+	}
 	return Success(c, nil)
 }
 
@@ -94,12 +112,14 @@ func (assetApi AssetApi) AssetImportEndpoint(c echo.Context) error {
 				asset["tags"] = tags
 			}
 
-			_, err := service.AssetService.Create(context.Background(), asset)
+			a, err := service.AssetService.Create(context.Background(), asset)
 			if err != nil {
 				errorCount++
 				m[strconv.Itoa(i)] = err.Error()
 			} else {
 				successCount++
+				// 创建默认的storage
+				_ = service.StorageService.CreateStorageByAsset(context.TODO(), a)
 			}
 		}
 	}
@@ -234,4 +254,24 @@ func (assetApi AssetApi) AssetChangeOwnerEndpoint(c echo.Context) (err error) {
 		return err
 	}
 	return Success(c, "")
+}
+
+func (assetApi AssetApi) AssetGetConnectCountEndpoint(c echo.Context) (err error) {
+	tags := c.QueryParam("tags")
+	id := c.QueryParam("id")
+	ids := []string{}
+	if id == "" {
+		ids, err = repository.AssetRepository.FindIdsByTags(context.TODO(), tags)
+		if err != nil {
+			return err
+		}
+	} else {
+		ids = append(ids, id)
+	}
+
+	count, err := repository.SessionRepository.AssetConnectNum(context.TODO(), ids...)
+	if err != nil {
+		return err
+	}
+	return Success(c, count)
 }

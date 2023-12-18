@@ -115,3 +115,31 @@ func (api AccessGatewayApi) AccessGatewayGetEndpoint(c echo.Context) error {
 
 	return Success(c, item)
 }
+
+func (api AccessGatewayApi) AccessGatewayListEndpoint(c echo.Context) error {
+	pageIndex, _ := strconv.Atoi(c.QueryParam("pageIndex"))
+	pageSize, _ := strconv.Atoi(c.QueryParam("pageSize"))
+	ip := c.QueryParam("ip")
+	name := c.QueryParam("name")
+	ids := strings.Split(c.QueryParam("ids"), ",")
+	order := c.QueryParam("order")
+	field := c.QueryParam("field")
+
+	items, total, err := repository.GatewayRepository.List(context.TODO(), pageIndex, pageSize, ip, name, ids, order, field)
+	if err != nil {
+		return err
+	}
+	for i := 0; i < len(items); i++ {
+		g, err := service.GatewayService.GetGatewayById(items[i].ID)
+		if err != nil {
+			return err
+		}
+		items[i].Connected = g.Connected
+		items[i].Message = g.Message
+	}
+
+	return Success(c, maps.Map{
+		"total": total,
+		"items": items,
+	})
+}

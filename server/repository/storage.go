@@ -88,3 +88,8 @@ func (r storageRepository) FindAll(c context.Context) (o []model.Storage, err er
 	err = r.GetDB(c).Find(&o).Error
 	return
 }
+
+func (r storageRepository) FindByAssetIdAndDefault(c context.Context, owner string, isDefault bool) (m model.Storage, err error) {
+	err = r.GetDB(c).Where("owner = ? and is_default = ?", owner, isDefault).First(&m).Error
+	return
+}

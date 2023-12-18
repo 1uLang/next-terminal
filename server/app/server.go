@@ -90,6 +90,7 @@ func setupRoutes() *echo.Echo {
 	StorageLogApi := new(api.StorageLogApi)
 	AuthorisedApi := new(api.AuthorisedApi)
 
+	e.POST("/authorize-token", accountApi.AuthorizeToken)
 	e.POST("/login", accountApi.LoginEndpoint)
 
 	account := e.Group("/account")
@@ -103,7 +104,6 @@ func setupRoutes() *echo.Echo {
 		account.POST("/confirm-totp", accountApi.ConfirmTOTPEndpoint)
 		account.GET("/access-token", accountApi.AccessTokenGetEndpoint)
 		account.POST("/access-token", accountApi.AccessTokenGenEndpoint)
-		account.DELETE("/access-token", accountApi.AccessTokenDelEndpoint)
 	}
 
 	_worker := e.Group("/worker")
@@ -155,10 +155,12 @@ func setupRoutes() *echo.Echo {
 		assets.GET("", AssetApi.AssetAllEndpoint)
 		assets.POST("", AssetApi.AssetCreateEndpoint)
 		assets.POST("/import", AssetApi.AssetImportEndpoint)
+		assets.POST("/batch", AssetApi.AssetBatchUpdateEndpoint)
 		assets.GET("/paging", AssetApi.AssetPagingEndpoint)
 		assets.POST("/:id/tcping", AssetApi.AssetTcpingEndpoint)
 		assets.PUT("/:id", AssetApi.AssetUpdateEndpoint)
 		assets.GET("/:id", AssetApi.AssetGetEndpoint)
+		assets.GET("/connect-count", AssetApi.AssetGetConnectCountEndpoint)
 		assets.DELETE("/:id", AssetApi.AssetDeleteEndpoint)
 		assets.POST("/:id/change-owner", AssetApi.AssetChangeOwnerEndpoint)
 	}
@@ -179,6 +181,7 @@ func setupRoutes() *echo.Echo {
 	credentials := e.Group("/credentials", mw.Admin)
 	{
 		credentials.GET("", CredentialApi.CredentialAllEndpoint)
+		credentials.GET("/list", CredentialApi.CredentialListEndpoint)
 		credentials.GET("/paging", CredentialApi.CredentialPagingEndpoint)
 		credentials.POST("", CredentialApi.CredentialCreateEndpoint)
 		credentials.PUT("/:id", CredentialApi.CredentialUpdateEndpoint)
@@ -189,6 +192,8 @@ func setupRoutes() *echo.Echo {
 
 	sessions := e.Group("/sessions")
 	{
+		sessions.GET("/list", SessionApi.SessionListEndpoint)
+		sessions.GET("/statistics", SessionApi.SessionStatistics)
 		sessions.GET("/paging", mw.Admin(SessionApi.SessionPagingEndpoint))
 		sessions.POST("/:id/disconnect", mw.Admin(SessionApi.SessionDisconnectEndpoint))
 		sessions.DELETE("/:id", mw.Admin(SessionApi.SessionDeleteEndpoint))
@@ -300,6 +305,7 @@ func setupRoutes() *echo.Echo {
 	{
 		accessGateways.GET("", AccessGatewayApi.AccessGatewayAllEndpoint)
 		accessGateways.POST("", AccessGatewayApi.AccessGatewayCreateEndpoint)
+		accessGateways.GET("/list", AccessGatewayApi.AccessGatewayListEndpoint)
 		accessGateways.GET("/paging", AccessGatewayApi.AccessGatewayPagingEndpoint)
 		accessGateways.PUT("/:id", AccessGatewayApi.AccessGatewayUpdateEndpoint)
 		accessGateways.DELETE("/:id", AccessGatewayApi.AccessGatewayDeleteEndpoint)
