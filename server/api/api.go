@@ -32,8 +32,18 @@ func Success(c echo.Context, data interface{}) error {
 	})
 }
 
+func checkToken(token string) bool {
+
+	_, found := cache.TokenManager.Get(token)
+	return !found
+}
 func GetToken(c echo.Context) string {
 	token := c.Request().Header.Get(nt.Token)
+	atoken := c.Request().Header.Get(nt.AToken)
+	if token == "" || token == "null" || checkToken(token) {
+		token = atoken
+		c.Request().Header.Set(nt.Token, atoken)
+	}
 	if len(token) > 0 {
 		return token
 	}

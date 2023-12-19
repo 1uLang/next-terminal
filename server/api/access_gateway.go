@@ -32,7 +32,7 @@ func (api AccessGatewayApi) AccessGatewayCreateEndpoint(c echo.Context) error {
 	}
 	// 连接网关
 	service.GatewayService.ReLoad(&item)
-	return Success(c, "")
+	return Success(c, item.ID)
 }
 
 func (api AccessGatewayApi) AccessGatewayAllEndpoint(c echo.Context) error {

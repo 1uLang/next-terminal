@@ -39,7 +39,7 @@ func (assetApi AssetApi) AssetCreateEndpoint(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return Success(c, nil)
+	return Success(c, item)
 }
 
 func (assetApi AssetApi) AssetBatchUpdateEndpoint(c echo.Context) error {

@@ -195,8 +195,7 @@ func (api CredentialApi) CredentialListEndpoint(c echo.Context) error {
 	order := c.QueryParam("order")
 	field := c.QueryParam("field")
 
-	account, _ := GetCurrentAccount(c)
-	items, total, err := repository.CredentialRepository.List(context.TODO(), pageIndex, pageSize, name, order, field, ids, account)
+	items, total, err := repository.CredentialRepository.List(context.TODO(), pageIndex, pageSize, name, order, field, ids)
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,7 @@ import (
 )
 
 const Token = "X-Auth-Token"
+const AToken = "A-Auth-Token"
 
 type Key string
 
