@@ -181,9 +181,9 @@ func (r sessionRepository) Statistics(c context.Context, assetIds []string) (tot
 	}
 	itemSql += " order by s.connected_time desc "
 
-	db.Raw(countSql, params...).Scan(&total)
+	db.Raw(countSql, params...).Count(&total)
 
-	err = db.Raw(itemSql, params...).Scan(&results).Error
+	err = db.Raw(itemSql, params...).Find(&results).Error
 	if results == nil {
 		results = make([]model.SessionForPage, 0)
 	}
@@ -208,7 +208,7 @@ func (r sessionRepository) AssetConnectNum(c context.Context, assetIds ...string
 		countSql += "where s.asset_id in ?"
 	}
 
-	db.Raw(countSql, params...).Scan(&total)
+	db.Raw(countSql, params...).Find(&total)
 
 	return
 }
@@ -239,12 +239,12 @@ func (r sessionRepository) ListAssetIds(c context.Context, pageIndex, pageSize i
 		params = append(params, assetIds)
 	}
 
+	db.Raw(countSql, params...).Find(&total)
+
 	params = append(params, (pageIndex-1)*pageSize, pageSize)
 	itemSql += " order by s.connected_time desc LIMIT ?, ?"
 
-	db.Raw(countSql, params...).Scan(&total)
-
-	err = db.Raw(itemSql, params...).Scan(&results).Error
+	err = db.Raw(itemSql, params...).Find(&results).Error
 	if results == nil {
 		results = make([]model.SessionForPage, 0)
 	}
