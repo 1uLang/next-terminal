@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/shirou/gopsutil/v3/load"
 	"next-terminal/server/common/nt"
+	"next-terminal/server/global/gateway"
 	"next-terminal/server/service"
 	"next-terminal/server/utils"
 	"strconv"
@@ -53,6 +54,13 @@ func (t *Ticker) SetupTicker() {
 			if err != nil {
 				log.Error("采集系统负载失败", log.NamedError("err", err))
 			}
+		}
+	}()
+
+	gatewayManagerTicker := time.NewTicker(1 * time.Minute)
+	go func() {
+		for range gatewayManagerTicker.C {
+			gateway.GlobalGatewayManager.Loop()
 		}
 	}()
 }

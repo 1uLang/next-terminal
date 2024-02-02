@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-
 	"next-terminal/server/global/gateway"
 	"next-terminal/server/model"
 	"next-terminal/server/repository"

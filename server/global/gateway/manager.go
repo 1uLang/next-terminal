@@ -1,9 +1,9 @@
 package gateway
 
 import (
-	"sync"
-
 	"next-terminal/server/model"
+	"next-terminal/server/utils"
+	"sync"
 )
 
 type manager struct {
@@ -18,6 +18,8 @@ func (m *manager) GetById(id string) *Gateway {
 }
 
 func (m *manager) Add(model *model.AccessGateway) *Gateway {
+	active, _ := utils.Tcping(model.IP, model.Port)
+	connected := active
 	g := &Gateway{
 		ID:          model.ID,
 		GatewayType: model.GatewayType,
@@ -27,7 +29,7 @@ func (m *manager) Add(model *model.AccessGateway) *Gateway {
 		Password:    model.Password,
 		PrivateKey:  model.PrivateKey,
 		Passphrase:  model.Passphrase,
-		Connected:   false,
+		Connected:   connected,
 		SshClient:   nil,
 		Message:     "暂未使用",
 		tunnels:     make(map[string]*Tunnel),
@@ -48,4 +50,14 @@ var GlobalGatewayManager *manager
 
 func init() {
 	GlobalGatewayManager = &manager{}
+}
+
+func (m *manager) Loop() {
+	m.gateways.Range(func(key, value any) bool {
+		g := value.(*Gateway)
+		active, _ := utils.Tcping(g.IP, g.Port)
+		g.Connected = active
+		m.gateways.Store(key, g)
+		return true
+	})
 }
