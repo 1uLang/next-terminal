@@ -34,6 +34,7 @@ const (
 	AssetNotActive           int = 805
 	NewSshClientError        int = 806
 	ForcedTimeoutDisconnect  int = 807
+	DangerCommandWarning     int = 808
 )
 
 var UpGrader = websocket.Upgrader{

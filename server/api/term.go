@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"next-terminal/server/common/nt"
 	"path"
 	"strconv"
+	"strings"
 	"time"
 
 	"next-terminal/server/common/guacamole"
@@ -169,6 +171,8 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 			}
 		}
 	}()
+	// 清空历史命令
+	_ = termHandler.Write([]byte("history -c\n"))
 	for {
 		_, message, err := ws.ReadMessage()
 		if err != nil {
@@ -201,6 +205,92 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 			}
 			_ = repository.SessionRepository.UpdateWindowSizeById(ctx, winSize.Rows, winSize.Cols, sessionId)
 		case Data:
+			offset := termHandler.offset
+			fmt.Println("== write ", []byte(msg.Content))
+			switch msg.Content {
+			case string([]byte{27, 91, 65}): // 上 记录回显示命令
+				termHandler.review = true
+			case string([]byte{27, 91, 66}): // 下 记录回显示命令
+				termHandler.review = true
+			case string([]byte{27, 91, 67}): // 右 记录光标位置记录命令
+				if offset < len(termHandler.command) {
+					offset++
+				}
+			case string([]byte{27, 91, 68}): // 左 记录光标位置记录命令
+				if offset > 0 {
+					offset--
+				}
+			case string([]byte{13}): // 回车 执行命令前 检测命令 是否危险
+				// check command danger
+				if checkCommandDanger(termHandler.command) { // 下发 ctrl + c
+					err := termHandler.WriteCancel()
+					if err != nil {
+						service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
+					}
+
+					termHandler.command = ""
+					termHandler.offset = 0
+					// warning
+					service.SessionService.WarningSessionById(sessionId, DangerCommandWarning, "\r\nCommand `rm` is forbidden")
+					continue
+				}
+				termHandler.command = ""
+				offset = 0
+			case string([]byte{27, 91, 51, 126}): // DEL 执行命令前 检测命令 是否危险
+				if len(termHandler.command) > 0 {
+					if offset != len(termHandler.command) {
+						termHandler.command = termHandler.command[:offset] + termHandler.command[offset+1:]
+					}
+				}
+			case string([]byte{127}): // 删除 执行命令前 检测命令 是否危险
+				if len(termHandler.command) > 0 && offset > 0 {
+
+					if offset != len(termHandler.command) {
+						offset--
+						termHandler.command = termHandler.command[:offset] + termHandler.command[offset+1:]
+					} else {
+						offset--
+						termHandler.command = termHandler.command[:offset]
+					}
+				}
+			case string([]byte{3}): // ctrl C 取消记录的命令
+				termHandler.command = ""
+				termHandler.offset = 0
+				termHandler.review = false
+			default:
+				offset += len(msg.Content)
+				if len(termHandler.command) != termHandler.offset { // 中间写入
+					termHandler.command = termHandler.command[:termHandler.offset] + msg.Content + termHandler.command[termHandler.offset:]
+				} else {
+					termHandler.command += msg.Content
+				}
+				// 判断是否有 回车
+				cmds := strings.Split(termHandler.command, string([]byte{13}))
+				isDanger := false
+				for i := 0; len(cmds) > 1 && i < len(cmds); i++ {
+					if checkCommandDanger(cmds[i]) {
+						isDanger = true
+						break
+					}
+				}
+				if isDanger {
+					err := termHandler.WriteCancel()
+					if err != nil {
+						service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
+					}
+					termHandler.command = ""
+					termHandler.offset = 0
+					// warning
+					service.SessionService.WarningSessionById(sessionId, DangerCommandWarning, "\r\nCommand `rm` is forbidden")
+					continue
+				}
+			}
+			if !termHandler.review {
+				termHandler.offset = offset
+			}
+			// 危险命令 直接下发 ctrl+c 终止命令执行
+			fmt.Println(termHandler.command, termHandler.offset)
+
 			input := []byte(msg.Content)
 			err := termHandler.Write(input)
 			if err != nil {
@@ -218,7 +308,17 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 	}
 	return err
 }
-
+func checkCommandDanger(command string) bool {
+	fmt.Println("==== check cmd ", command)
+	cmds := strings.Split(command, "&&")
+	for _, cmd := range cmds {
+		cmd = strings.TrimSpace(cmd)
+		if len(cmd) > 3 && cmd[:3] == "rm " {
+			return true
+		}
+	}
+	return false
+}
 func (api WebTerminalApi) SshMonitorEndpoint(c echo.Context) error {
 	ws, err := UpGrader.Upgrade(c.Response().Writer, c.Request(), nil)
 	if err != nil {

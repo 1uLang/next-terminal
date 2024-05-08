@@ -105,6 +105,15 @@ func (service sessionService) ReviewedAll() error {
 
 var mutex sync.Mutex
 
+func (service sessionService) WarningSessionById(sessionId string, code int, reason string) {
+	mutex.Lock()
+	defer mutex.Unlock()
+	nextSession := session.GlobalSessionManager.GetById(sessionId)
+	if nextSession != nil {
+		log.Debug("会话告警", log.String("会话ID", sessionId), log.String("原因", reason))
+		service.WriteWarningMessage(nextSession, nextSession.Mode, code, reason)
+	}
+}
 func (service sessionService) CloseSessionById(sessionId string, code int, reason string) {
 	mutex.Lock()
 	defer mutex.Unlock()
@@ -123,6 +132,19 @@ func (service sessionService) CloseSessionById(sessionId string, code int, reaso
 	session.GlobalSessionManager.Del(sessionId)
 
 	service.DisDBSess(sessionId, code, reason)
+}
+
+func (service sessionService) WriteWarningMessage(sess *session.Session, mode string, code int, reason string) {
+	switch mode {
+	case nt.Guacd:
+		err := guacamole.NewInstruction("error", "", strconv.Itoa(code))
+		_ = sess.WriteString(err.String())
+		disconnect := guacamole.NewInstruction("disconnect")
+		_ = sess.WriteString(disconnect.String())
+	case nt.Native, nt.Terminal:
+		msg := `5` + reason
+		_ = sess.WriteString(msg)
+	}
 }
 
 func (service sessionService) WriteCloseMessage(sess *session.Session, mode string, code int, reason string) {

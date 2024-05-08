@@ -92,6 +92,9 @@ class BatchCommandTerm extends Component {
                     term.writeln(`\x1B[1;3;31m${msg['content']}\x1B[0m `)
                     webSocket.close();
                     break;
+                case Message.Warning:
+                    term.writeln(`\x1B[1;3;31m${msg['content']}\x1B[0m `)
+                    break;
                 default:
                     break;
             }

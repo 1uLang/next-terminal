@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"context"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 	"unicode/utf8"
@@ -24,6 +26,12 @@ type TermHandler struct {
 	tick         *time.Ticker
 	mutex        sync.Mutex
 	buf          bytes.Buffer
+
+	done1, done2 bool
+	command      string
+	review       bool
+	offset       int
+	isDanger     bool
 }
 
 func NewTermHandler(userId, assetId, sessionId string, isRecording bool, ws *websocket.Conn, nextTerminal *term.NextTerminal) *TermHandler {
@@ -80,6 +88,51 @@ func (r *TermHandler) writeToWebsocket() {
 			if s == "" {
 				continue
 			}
+			if !r.done1 || !r.done2 {
+				if i := strings.Index(s, "history -c"); i != -1 {
+					s = s[:i]
+					if r.done1 {
+						r.done2 = true
+					}
+					r.done1 = true
+					fmt.Println("?")
+				}
+			}
+			fmt.Println("??????", []byte(s), r.review && s != "", r.isDanger)
+			if r.review {
+				r.review = false
+				if s == string([]byte{7}) { // 不变
+
+				} else if idx := strings.Index(s, string([]byte{27, 91, 75})); idx != -1 && idx != len(s)-3 { // 清空部分命令
+					r.command = r.command[:len(r.command)-idx]
+				} else if idx := strings.Index(s, string([]byte{27, 91})); idx != -1 && !strings.Contains(s, string([]byte{27, 91, 75})) { // 清空命令
+					if idx < len(r.command) {
+						r.command = r.command[idx+1:] + s[idx+4:]
+					} else {
+						r.command = s[idx+4:]
+					}
+				} else if idx := strings.LastIndex(s, string([]byte{8})); idx != -1 { // 替换部分
+					tmp := s
+					if idx := strings.Index(s, string([]byte{27, 91, 75})); idx != -1 {
+						tmp = s[:idx]
+					}
+					if idx < len(r.command) {
+						r.command = r.command[:len(r.command)-idx-1] + tmp[idx+1:]
+					} else {
+						r.command = tmp[idx+1:]
+					}
+				} else { // 命令追加
+					r.command += s
+				}
+				r.offset = len(r.command)
+				fmt.Println("review command ", r.command)
+				fmt.Println("review command ", []byte(r.command))
+			}
+
+			if r.isDanger && strings.HasPrefix(s, string([]byte{94, 67})) {
+				s = strings.TrimPrefix(s, string([]byte{94, 67}))
+				r.isDanger = false
+			}
 			if err := r.SendMessageToWebSocket(dto.NewMessage(Data, s)); err != nil {
 				return
 			}
@@ -87,6 +140,7 @@ func (r *TermHandler) writeToWebsocket() {
 			if r.isRecording {
 				_ = r.nextTerminal.Recorder.WriteData(s)
 			}
+			fmt.Println("read =====:", s)
 			// 监控
 			SendObData(r.sessionId, s)
 			r.buf.Reset()
@@ -102,6 +156,11 @@ func (r *TermHandler) writeToWebsocket() {
 	}
 }
 
+func (r *TermHandler) WriteCancel() error {
+	r.isDanger = true
+	_, err := r.nextTerminal.Write([]byte{3})
+	return err
+}
 func (r *TermHandler) Write(input []byte) error {
 	// 正常的字符输入
 	_, err := r.nextTerminal.Write(input)

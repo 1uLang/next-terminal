@@ -13,6 +13,7 @@ const Message = class Message {
     static Data = 2;
     static Resize = 3;
     static Ping = 4;
+    static Warning = 5;
 
     static parse(s) {
         let type = parseInt(s.substring(0, 1));
