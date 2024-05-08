@@ -255,15 +255,15 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 				}
 			case string([]byte{3}): // ctrl C 取消记录的命令
 				termHandler.command = ""
-				termHandler.offset = 0
+				offset = 0
 				termHandler.review = false
 			default:
-				offset += len(msg.Content)
 				if len(termHandler.command) != termHandler.offset { // 中间写入
 					termHandler.command = termHandler.command[:termHandler.offset] + msg.Content + termHandler.command[termHandler.offset:]
 				} else {
 					termHandler.command += msg.Content
 				}
+				offset += len(msg.Content)
 				// 判断是否有 回车
 				cmds := strings.Split(termHandler.command, string([]byte{13}))
 				isDanger := false
