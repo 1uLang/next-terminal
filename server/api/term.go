@@ -222,19 +222,6 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 					offset--
 				}
 			case string([]byte{13}): // 回车 执行命令前 检测命令 是否危险
-				// check command danger
-				if checkCommandDanger(termHandler.command) { // 下发 ctrl + c
-					err := termHandler.WriteCancel()
-					if err != nil {
-						service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
-					}
-
-					termHandler.command = ""
-					termHandler.offset = 0
-					// warning
-					service.SessionService.WarningSessionById(sessionId, DangerCommandWarning, "\r\nCommand `rm` is forbidden")
-					continue
-				}
 				//记录命令日志
 				if len(termHandler.command) > 0 {
 					go func(sessionId string, command string) {
@@ -255,6 +242,19 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 							return
 						}
 					}(sessionId, termHandler.command)
+				}
+				// check command danger
+				if checkCommandDanger(termHandler.command) { // 下发 ctrl + c
+					err := termHandler.WriteCancel()
+					if err != nil {
+						service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
+					}
+
+					termHandler.command = ""
+					termHandler.offset = 0
+					// warning
+					service.SessionService.WarningSessionById(sessionId, DangerCommandWarning, "\r\nCommand `rm` is forbidden")
+					continue
 				}
 				termHandler.command = ""
 				offset = 0
@@ -316,6 +316,39 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 			fmt.Println(termHandler.command, termHandler.offset)
 
 			input := []byte(msg.Content)
+
+			//是否回车
+			isOk := false
+			for _, v := range input {
+				if v == byte(13) {
+					isOk = true
+					break
+				}
+			}
+			if isOk {
+				//记录命令日志
+				if len(termHandler.command) > 0 {
+					go func(sessionId string, command string) {
+						con := context.TODO()
+						ses, err := service.SessionService.FindByIdAndDecrypt(con, sessionId)
+						if err != nil {
+							return
+						}
+						sshMsg := strings.TrimRight(command, "\r")
+						if err := repository.TerminalLogRepository.Create(con, &model.TerminalLog{
+							ID:        utils.UUID(),
+							SessionId: sessionId,
+							AssetId:   ses.AssetId,
+							ClientIP:  ses.ClientIP,
+							Message:   sshMsg,
+							Created:   common.NowJsonTime(),
+						}); err != nil {
+							return
+						}
+					}(sessionId, termHandler.command)
+				}
+			}
+
 			err := termHandler.Write(input)
 			if err != nil {
 				service.SessionService.CloseSessionById(sessionId, TunnelClosed, "远程连接已关闭")
