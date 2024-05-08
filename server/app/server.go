@@ -89,6 +89,7 @@ func setupRoutes() *echo.Echo {
 	LoginPolicyApi := new(api.LoginPolicyApi)
 	StorageLogApi := new(api.StorageLogApi)
 	AuthorisedApi := new(api.AuthorisedApi)
+	terminalLogApi := new(api.TerminalLogApi)
 
 	e.POST("/authorize-token", accountApi.AuthorizeToken)
 	e.POST("/login", accountApi.LoginEndpoint)
@@ -363,6 +364,11 @@ func setupRoutes() *echo.Echo {
 	}
 
 	e.GET("/menus", RoleApi.TreeMenus, mw.Admin)
+
+	terminalLog := e.Group("/terminalLog", mw.Admin)
+	{
+		terminalLog.GET("/paging", terminalLogApi.TerminalLogPagingEndpoint)
+	}
 
 	return e
 }

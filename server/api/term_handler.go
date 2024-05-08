@@ -28,10 +28,11 @@ type TermHandler struct {
 	buf          bytes.Buffer
 
 	done1, done2 bool
-	command      string
-	review       bool
-	offset       int
-	isDanger     bool
+	command      string //命令
+	review       bool   //翻看历史记录
+	tab          bool   //tab补全代码
+	offset       int    //索引
+	isDanger     bool   //清空命令
 }
 
 func NewTermHandler(userId, assetId, sessionId string, isRecording bool, ws *websocket.Conn, nextTerminal *term.NextTerminal) *TermHandler {
@@ -127,6 +128,16 @@ func (r *TermHandler) writeToWebsocket() {
 				r.offset = len(r.command)
 				fmt.Println("review command ", r.command)
 				fmt.Println("review command ", []byte(r.command))
+			}
+			if r.tab {
+				r.tab = false
+				if s == string([]byte{7}) { // 不变
+				} else { // 命令追加
+					r.command += s
+				}
+				r.offset = len(r.command)
+				fmt.Println("tab command ", r.command)
+				fmt.Println("tab command ", []byte(r.command))
 			}
 
 			if r.isDanger && strings.HasPrefix(s, string([]byte{94, 67})) {
