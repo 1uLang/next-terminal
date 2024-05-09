@@ -222,27 +222,6 @@ func (api WebTerminalApi) SshEndpoint(c echo.Context) error {
 					offset--
 				}
 			case string([]byte{13}): // 回车 执行命令前 检测命令 是否危险
-				//记录命令日志
-				if len(termHandler.command) > 0 {
-					go func(sessionId string, command string) {
-						con := context.TODO()
-						ses, err := service.SessionService.FindByIdAndDecrypt(con, sessionId)
-						if err != nil {
-							return
-						}
-						sshMsg := strings.TrimRight(command, "\r")
-						if err := repository.TerminalLogRepository.Create(con, &model.TerminalLog{
-							ID:        utils.UUID(),
-							SessionId: sessionId,
-							AssetId:   ses.AssetId,
-							ClientIP:  ses.ClientIP,
-							Message:   sshMsg,
-							Created:   common.NowJsonTime(),
-						}); err != nil {
-							return
-						}
-					}(sessionId, termHandler.command)
-				}
 				// check command danger
 				if checkCommandDanger(termHandler.command) { // 下发 ctrl + c
 					err := termHandler.WriteCancel()
