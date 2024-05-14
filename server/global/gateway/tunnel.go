@@ -34,7 +34,6 @@ func (r *Tunnel) Open(sshClient *ssh.Client) {
 			return
 		}
 		r.remoteConnections = append(r.remoteConnections, remoteConn)
-
 		go copyConn(localConn, remoteConn)
 		go copyConn(remoteConn, localConn)
 	}

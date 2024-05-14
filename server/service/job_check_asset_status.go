@@ -38,7 +38,15 @@ func (r CheckAssetStatusJob) Run() {
 	}
 
 	msgChan := make(chan string)
-	for i := range assets {
+	offset := 0
+	size := 100
+	// 分段检测 防止同时产生大量连接 导致连接数过多崩溃
+RECHECK:
+	if len(assets[offset:]) < size {
+		size = len(assets[offset:])
+	}
+
+	for i := range assets[offset : offset+size] {
 		asset := assets[i]
 		go func() {
 			t1 := time.Now()
@@ -65,6 +73,10 @@ func (r CheckAssetStatusJob) Run() {
 			log.Debug(msg)
 			msgChan <- msg
 		}()
+	}
+	if size == 100 {
+		offset += 100
+		goto RECHECK
 	}
 
 	var message = ""

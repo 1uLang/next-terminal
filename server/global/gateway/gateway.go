@@ -34,7 +34,10 @@ type Gateway struct {
 func (g *Gateway) OpenSshTunnel(id, ip string, port int) (exposedIP string, exposedPort int, err error) {
 	g.mutex.Lock()
 	defer g.mutex.Unlock()
-	if !g.Connected {
+	if !g.Connected || g.SshClient == nil {
+		if g.SshClient != nil {
+			g.SshClient.Close()
+		}
 		sshClient, err := term.NewSshClient(g.IP, g.Port, g.Username, g.Password, g.PrivateKey, g.Passphrase)
 		if err != nil {
 			g.Connected = false
@@ -93,6 +96,7 @@ func (g *Gateway) CloseSshTunnel(id string) {
 	if len(g.tunnels) == 0 {
 		if g.SshClient != nil {
 			_ = g.SshClient.Close()
+			g.SshClient = nil
 		}
 		g.Connected = false
 		g.Message = "暂未使用"
