@@ -76,7 +76,6 @@ func (api AccessGatewayApi) AccessGatewayPagingEndpoint(c echo.Context) error {
 		"items": items,
 	})
 }
-
 func (api AccessGatewayApi) AccessGatewayUpdateEndpoint(c echo.Context) error {
 	id := c.Param("id")
 
@@ -105,6 +104,19 @@ func (api AccessGatewayApi) AccessGatewayDeleteEndpoint(c echo.Context) error {
 	return Success(c, nil)
 }
 
+func (api AccessGatewayApi) AccessGatewayReconnectEndpoint(c echo.Context) error {
+	id := c.Param("id")
+	m, err := repository.GatewayRepository.FindById(context.TODO(), id)
+	if err != nil {
+		return err
+	}
+	g := service.GatewayService.ReLoad(&m)
+	if g != nil {
+		return Success(c, nil)
+	} else {
+		return Fail(c, -1, "")
+	}
+}
 func (api AccessGatewayApi) AccessGatewayGetEndpoint(c echo.Context) error {
 	id := c.Param("id")
 
