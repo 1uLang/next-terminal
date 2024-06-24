@@ -113,10 +113,10 @@ const ManagerLayout = () => {
             <Menu.Item>
                 <Link to={'/my-asset'}><DesktopOutlined/> 我的资产</Link>
             </Menu.Item>
-            <Menu.Item>
-                <Link to={'/debug/pprof'}><BugTwoTone/> DEBUG</Link>
-                <a target='_blank' href={`/debug/pprof/`}></a>
-            </Menu.Item>
+            {/*<Menu.Item>*/}
+            {/*    <Link to={'/debug/pprof'}><BugTwoTone/> DEBUG</Link>*/}
+            {/*    <a target='_blank' href={`/debug/pprof/`}></a>*/}
+            {/*</Menu.Item>*/}
             <Menu.Item>
                 <Popconfirm
                     key='login-btn-pop'
