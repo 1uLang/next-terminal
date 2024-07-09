@@ -67,6 +67,13 @@ func (api OverviewApi) OverviewAssetEndPoint(c echo.Context) error {
 	return Success(c, m)
 }
 
+func isEqual(s1, s2 string) bool {
+	l := len(s1)
+	if len(s1) > len(s2) {
+		l = len(s2)
+	}
+	return s1[:l] == s2[:l]
+}
 func (api OverviewApi) OverviewDateCounterEndPoint(c echo.Context) error {
 	d := c.QueryParam("d")
 	var days = 7
@@ -97,7 +104,7 @@ func (api OverviewApi) OverviewDateCounterEndPoint(c echo.Context) error {
 
 		var exist = false
 		for _, counter := range loginLogCounters {
-			if counter.Date == day {
+			if isEqual(counter.Date, day) {
 				exist = true
 				counters = append(counters, dto.DateCounter{
 					Type:  "登录次数",
@@ -118,7 +125,7 @@ func (api OverviewApi) OverviewDateCounterEndPoint(c echo.Context) error {
 
 		exist = false
 		for _, counter := range userCounters {
-			if counter.Date == day {
+			if isEqual(counter.Date, day) {
 				exist = true
 				counters = append(counters, dto.DateCounter{
 					Type:  "活跃用户",
@@ -139,7 +146,7 @@ func (api OverviewApi) OverviewDateCounterEndPoint(c echo.Context) error {
 
 		exist = false
 		for _, counter := range sessionCounters {
-			if counter.Date == day {
+			if isEqual(counter.Date, day) {
 				exist = true
 				counters = append(counters, dto.DateCounter{
 					Type:  "活跃资产",

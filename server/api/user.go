@@ -116,6 +116,11 @@ func (userApi UserApi) GetEndpoint(c echo.Context) error {
 		return err
 	}
 
+	if item.TOTPSecret != "" {
+		item.TOTPSecret = "enabled"
+	} else {
+		item.TOTPSecret = "disabled"
+	}
 	return Success(c, item)
 }
 

@@ -214,6 +214,7 @@ func (s *roleService) CreateDefaultRoles() error {
 	var auditPermissions = []string{
 		"dashboard",
 		"log-audit",
+		"session-audit",
 		"online-session",
 		"offline-session",
 		"login-log",
