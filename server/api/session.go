@@ -342,26 +342,34 @@ func (api SessionApi) SessionDownloadEndpoint(c echo.Context) error {
 		}
 
 		defer dstFile.Close()
+		fs, err := dstFile.Stat()
+		if err != nil {
+			return err
+		}
 		c.Response().Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%s", filenameWithSuffix))
+		c.Response().Header().Set("Content-Length", fmt.Sprintf("%d", fs.Size()))
+		c.Response().Header().Set("Content-Type", echo.MIMEOctetStream)
 
 		// 创建一个合适的缓冲区大小
 		buffer := make([]byte, 32*1024) // 32KB buffer
 
 		for {
 			n, err := dstFile.Read(buffer)
-			if err != nil {
-				if err == io.EOF {
-					break // 文件读取完毕
+			fmt.Println(n, err)
+			if n > 0 {
+				if _, err := c.Response().Write(buffer[:n]); err != nil {
+					return err // 写入HTTP响应时发生错误
 				}
+				if err == io.EOF {
+					return nil
+				}
+			}
+			if err != nil {
 				log.Debug("session download read", log.String("错误信息", err.Error()))
 				break
 			}
-			if _, err := c.Response().Write(buffer[:n]); err != nil {
-				return err // 写入HTTP响应时发生错误
-			}
 		}
 
-		return c.Stream(http.StatusOK, echo.MIMEOctetStream, nil) // 流式传输完成
 	} else if "rdp" == s.Protocol {
 		storageId := s.StorageId
 		return service.StorageService.StorageDownload(c, file, storageId)
